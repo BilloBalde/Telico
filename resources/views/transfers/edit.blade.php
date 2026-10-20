@@ -78,7 +78,7 @@
                                     </div>
                                     <div class="col-lg-6 col-sm-6 col-12">
                                         <div class="form-group">
-                                            <label for="quantity">Quantité</label>
+                                            <label for="quantity">Quantité (en {{ \App\Models\Product::motUnite($storeProduct->unite ?: $storeProduct->product?->unite, 2) }})</label>
                                             <input type="text" name="quantity" id="quantity" value="{{ old('quantity', $storeProduct->quantity) }}" class="form-control">
                                             @error('quantity')
                                             <span class="text-danger"><strong></strong></span>

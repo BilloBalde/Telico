@@ -20,7 +20,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 class PaymentsExport implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnFormatting, WithEvents, ShouldAutoSize, WithTitle
 {
     // Couleur de marque SMH, utilisée sur les reçus/factures/achats de l'app.
-    private const BRAND = 'C1682F';
+    private const BRAND = '3E4C21';
 
     protected $payments;
 
@@ -92,7 +92,7 @@ class PaymentsExport implements FromCollection, WithHeadings, WithMapping, WithS
                 // Bordures + centrage vertical sur toutes les lignes de données
                 $sheet->getStyle("A2:{$lastCol}{$lastRow}")->applyFromArray([
                     'borders' => [
-                        'allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E5D5C3']],
+                        'allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E6E9D5']],
                     ],
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
                 ]);
@@ -101,7 +101,7 @@ class PaymentsExport implements FromCollection, WithHeadings, WithMapping, WithS
                 for ($row = 2; $row <= $lastRow; $row++) {
                     if ($row % 2 === 0) {
                         $sheet->getStyle("A{$row}:{$lastCol}{$row}")->applyFromArray([
-                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FDFAF6']],
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F9F9F3']],
                         ]);
                     }
                 }
@@ -119,7 +119,7 @@ class PaymentsExport implements FromCollection, WithHeadings, WithMapping, WithS
 
                     $sheet->getStyle("A{$totalRow}:{$lastCol}{$totalRow}")->applyFromArray([
                         'font' => ['bold' => true, 'color' => ['rgb' => self::BRAND]],
-                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FBF3EA']],
+                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F4F5EC']],
                         'borders' => [
                             'top' => ['borderStyle' => Border::BORDER_MEDIUM, 'color' => ['rgb' => self::BRAND]],
                         ],

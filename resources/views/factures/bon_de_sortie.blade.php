@@ -44,7 +44,7 @@
         }
         
         .btn-added {
-            background-color: #ff9f43;
+            background-color: #3E4C21;
             color: white;
         }
         
@@ -347,7 +347,11 @@
         /* ============================================
            STYLES POUR L'IMPRESSION (fond blanc)
            ============================================ */
+        /* Mentions internes : jamais sur le bon imprimé ni sur le PDF. */
+        body.pdf-mode .mention-interne { display: none !important; }
+
         @media print {
+            .mention-interne { display: none !important; }
             /* Cacher les éléments d'interface */
             #global-loader,
             .header,
@@ -533,14 +537,25 @@
                                             @if($item->product?->image)
                                                 <img src="{{ asset('products/'.$item->product->image) }}" alt="{{ $item->produit }}">
                                             @else
-                                                <img src="{{ asset('assets/img/default-product.png') }}" alt="No Image">
+                                                <img src="{{ asset(\App\Models\Product::IMAGE_PAR_DEFAUT) }}" alt="No Image">
                                             @endif
                                         </td>
-                                        <td style="text-align: left;">{{ $item->produit }}</td>
+                                        <td style="text-align: left;">{{ $item->produit }}<br><small style="color:#6b7280;">Conditionnement : {{ $item->unite_detail }}</small>
+                                            {{-- Mention pour le magasinier, à l'écran seulement : le bon imprimé
+                                                 ou téléchargé peut être remis au client, qui ne doit pas voir
+                                                 chez quel partenaire l'article a été pris. --}}
+                                            @if ($item->is_third_party)<small class="mention-interne" data-html2canvas-ignore="true" style="display:block;color:#8A6A24;font-weight:600;">À récupérer chez le partenaire : {{ $item->partner?->name ?? '—' }}{{ $item->partner?->phone ? ' ('.$item->partner->phone.')' : '' }}</small>@endif</td>
                                         <td>{{ $item->quantite_affichee }}</td>
                                     </tr>
                                     @endforeach
                                 </tbody>
+                                {{-- Total par unité : cartons et pièces ne s'additionnent pas. --}}
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="3" style="text-align: right;"><strong>Total des articles sortis</strong></td>
+                                        <td><strong>{{ \App\Models\Product::resumeQuantites($invoice, 'quantity') }}</strong></td>
+                                    </tr>
+                                </tfoot>
                             </table>
 
                             <!-- Informations de livraison -->

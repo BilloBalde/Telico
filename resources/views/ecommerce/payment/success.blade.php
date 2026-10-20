@@ -46,7 +46,7 @@
                 @foreach($order->items as $item)
                 <div class="flex justify-between text-sm py-1">
                     <span class="text-gray-700">{{ $item->product?->libelle ?? 'Article #'.$item->product_id }}</span>
-                    <span class="text-gray-500">× {{ $item->quantity }}</span>
+                    <span class="text-gray-500">× {{ $item->quantite_affichee }}</span>
                 </div>
                 @endforeach
             </div>

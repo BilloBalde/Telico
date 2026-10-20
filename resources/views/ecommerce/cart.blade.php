@@ -7,7 +7,49 @@
     <h1 class="text-2xl font-bold text-gray-900 mb-1">Mon panier</h1>
     <p class="text-gray-600 text-sm mb-8">Gérez vos articles avant de commander</p>
 
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    @php
+        // Lignes du panier avec leur unité (carton, douzaine…). Paniers ouverts
+        // avant l'ajout des unités : unité lue sur la fiche produit.
+        $total = 0;
+        $lignes = collect($cart)->map(function ($details, $id) use (&$total) {
+            $unite = $details['unite'] ?? \App\Models\Product::whereKey($details['product_id'] ?? $id)->value('unite');
+            $total += $details['price'] * $details['quantity'];
+
+            return $details + [
+                'id'         => $id,
+                'mot_unite'  => \App\Models\Product::motUnite($unite),
+                'quantite'   => \App\Models\Product::quantiteEnUnite($details['quantity'], $unite),
+                'sous_total' => $details['price'] * $details['quantity'],
+            ];
+        });
+    @endphp
+
+    {{-- Téléphone : une carte par article, tout visible sans défilement horizontal. --}}
+    <div class="sm:hidden space-y-3">
+        @forelse($lignes as $ligne)
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex gap-3">
+                <div class="w-16 h-16 rounded-lg bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center">
+                    <img src="{{ asset('products/' . $ligne['image']) }}" alt="" class="w-full h-full object-cover"
+                         onerror="this.onerror=null;this.src='{{ asset('assets/img/produit-sans-photo.svg') }}'">
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                        <span class="text-sm font-medium text-gray-900">{{ $ligne['name'] }}</span>
+                        <a href="{{ route('cart.remove', $ligne['id']) }}" class="inline-flex items-center justify-center w-9 h-9 -mt-1 -mr-1 rounded-lg text-red-600 hover:bg-red-50 transition shrink-0" title="Retirer" aria-label="Retirer {{ $ligne['name'] }}">
+                            <i class="fas fa-trash-alt"></i>
+                        </a>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">{{ $ligne['quantite'] }} × {{ number_format($ligne['price'], 0, ',', ' ') }} GNF / {{ $ligne['mot_unite'] }}</p>
+                    <p class="text-sm font-semibold text-gray-900 mt-1">{{ number_format($ligne['sous_total'], 0, ',', ' ') }} GNF</p>
+                </div>
+            </div>
+        @empty
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-12 text-center text-gray-500">Votre panier est vide.</div>
+        @endforelse
+    </div>
+
+    {{-- Tablette et ordinateur : tableau. --}}
+    <div class="hidden sm:block bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
@@ -20,24 +62,22 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
-                    @php $total = 0; @endphp
-                    @forelse($cart as $id => $details)
-                        @php $total += $details['price'] * $details['quantity']; @endphp
+                    @forelse($lignes as $ligne)
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-4">
                                 <div class="flex items-center gap-3">
                                     <div class="w-14 h-14 rounded-lg bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center">
-                                        <img src="{{ asset('products/' . $details['image']) }}" alt="" class="w-full h-full object-cover"
-                                             onerror="this.onerror=null;this.src='{{ asset('assets/img/product/noimage.png') }}'">
+                                        <img src="{{ asset('products/' . $ligne['image']) }}" alt="" class="w-full h-full object-cover"
+                                             onerror="this.onerror=null;this.src='{{ asset('assets/img/produit-sans-photo.svg') }}'">
                                     </div>
-                                    <span class="text-sm font-medium text-gray-900">{{ $details['name'] }}</span>
+                                    <span class="text-sm font-medium text-gray-900">{{ $ligne['name'] }}</span>
                                 </div>
                             </td>
-                            <td class="px-4 py-4 text-sm text-gray-700 text-right whitespace-nowrap">{{ number_format($details['price'], 0, ',', ' ') }} GNF</td>
-                            <td class="px-4 py-4 text-sm text-gray-700 text-right">{{ $details['quantity'] }}</td>
-                            <td class="px-4 py-4 text-sm font-medium text-gray-900 text-right whitespace-nowrap">{{ number_format($details['price'] * $details['quantity'], 0, ',', ' ') }} GNF</td>
+                            <td class="px-4 py-4 text-sm text-gray-700 text-right whitespace-nowrap">{{ number_format($ligne['price'], 0, ',', ' ') }} GNF <span class="block text-xs text-gray-400">/ {{ $ligne['mot_unite'] }}</span></td>
+                            <td class="px-4 py-4 text-sm text-gray-700 text-right">{{ $ligne['quantite'] }}</td>
+                            <td class="px-4 py-4 text-sm font-medium text-gray-900 text-right whitespace-nowrap">{{ number_format($ligne['sous_total'], 0, ',', ' ') }} GNF</td>
                             <td class="px-4 py-4 text-right">
-                                <a href="{{ route('cart.remove', $id) }}" class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 transition" title="Retirer">
+                                <a href="{{ route('cart.remove', $ligne['id']) }}" class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 transition" title="Retirer">
                                     <i class="fas fa-trash-alt"></i>
                                 </a>
                             </td>

@@ -23,6 +23,7 @@ class CartController extends Controller
             "product_id" => $product->id,
             "name" => $product->libelle,
             "quantity" => $newQuantity,
+            "unite" => $product->unite,
             "price" => PricingTiers::unitPriceFor($basePrice, $newQuantity),
             "image" => $product->image
         ];

@@ -18,7 +18,7 @@
                 <div class="card-body">
                     <div class="text-muted" style="font-size:12px;">Ventes — {{ $label }}</div>
                     <div class="h5 mb-0">{{ numberDelimiter($s->amount) }} FG</div>
-                    <small class="text-muted">{{ number_format($s->qty, 0, ',', ' ') }} unités · marge {{ numberDelimiter($s->margin) }} FG</small>
+                    <small class="text-muted">{{ $s->qty_unites }} · marge {{ numberDelimiter($s->margin) }} FG</small>
                 </div>
             </div>
         </div>
@@ -50,7 +50,7 @@
                                         {{ $row->product?->sku }}
                                         @if ($row->fund_id)<small class="d-block text-muted">{{ \App\Models\Fund::labelFor($row->fund_id) }}</small>@endif
                                     </td>
-                                    <td class="text-end {{ $row->quantity < 0 ? 'text-danger' : '' }}">{{ number_format($row->quantity, 0, ',', ' ') }}</td>
+                                    <td class="text-end {{ $row->quantity < 0 ? 'text-danger' : '' }}">{{ \App\Models\Product::quantiteEnUnite($row->quantity, $row->product?->unite) }}</td>
                                     <td class="text-end">{{ numberDelimiter($row->product?->price_sale ?? 0) }}</td>
                                     <td class="text-end">{{ numberDelimiter($row->product?->price ?? 0) }}</td>
                                 </tr>
@@ -86,7 +86,7 @@
                     <ul class="list-unstyled mb-0" style="font-size:12px;">
                         @forelse ($movements as $m)
                         <li class="mb-2">
-                            <span class="{{ $m->quantity < 0 ? 'text-danger' : 'text-success' }}">{{ $m->quantity > 0 ? '+' : '' }}{{ $m->quantity }}</span>
+                            <span class="{{ $m->quantity < 0 ? 'text-danger' : 'text-success' }}">{{ $m->quantity > 0 ? '+' : '−' }}{{ \App\Models\Product::quantiteEnUnite(abs($m->quantity), $m->unite ?: $m->product?->unite) }}</span>
                             {{ $m->product?->libelle }} — {{ $m->type_label }}
                             @if ($m->counterpartStore) ({{ $m->quantity < 0 ? 'vers' : 'depuis' }} {{ $m->counterpartStore->store_name }})@endif
                             <br><span class="text-muted">{{ $m->created_at->format('d/m/Y H:i') }} · {{ $m->user?->name ?? 'système' }} · {{ $m->document_ref }}</span>

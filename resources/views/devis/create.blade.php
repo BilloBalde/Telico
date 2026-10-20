@@ -24,7 +24,7 @@
 
                 <form action="{{ route('devis.store') }}" method="POST" id="devisForm">
                     @csrf
-                    
+
                     <div class="card">
                         <div class="card-body">
                             <!-- Informations générales -->
@@ -45,7 +45,7 @@
                                         @enderror
                                     </div>
                                 </div>
-                                
+
                                 <div class="col-lg-4 col-sm-6 col-12">
                                     <div class="form-group">
                                         <label>Client <span class="text-danger">*</span></label>
@@ -67,22 +67,22 @@
                                         @enderror
                                     </div>
                                 </div>
-                                
+
                                 <div class="col-lg-4 col-sm-6 col-12">
                                     <div class="form-group">
                                         <label>Valable jusqu'au</label>
-                                        <input type="date" name="valid_until" class="form-control @error('valid_until') is-invalid @enderror" 
+                                        <input type="date" name="valid_until" class="form-control @error('valid_until') is-invalid @enderror"
                                                value="{{ old('valid_until', now()->addDays(30)->format('Y-m-d')) }}">
                                         @error('valid_until')
                                             <div class="invalid-feedback">{{ $message }}</div>
                                         @enderror
                                     </div>
                                 </div>
-                                
+
                                 <div class="col-lg-12">
                                     <div class="form-group">
                                         <label>Notes</label>
-                                        <textarea name="notes" class="form-control @error('notes') is-invalid @enderror" 
+                                        <textarea name="notes" class="form-control @error('notes') is-invalid @enderror"
                                                   rows="2">{{ old('notes') }}</textarea>
                                         @error('notes')
                                             <div class="invalid-feedback">{{ $message }}</div>
@@ -125,7 +125,7 @@
                                     </tfoot>
                                 </table>
                             </div>
-                            
+
                             <div class="alert alert-info mt-3" id="noProductsAlert" style="display: none;">
                                 <i class="fa fa-info-circle me-2"></i> Cliquez sur "Ajouter un produit" pour commencer.
                             </div>
@@ -202,7 +202,13 @@
         }
         let productIndex = 0;
         const products = @json($products);
-        
+        // Unité unique du produit : la quantité et le prix du devis sont dans
+        // cette unité (« en cartons »).
+        $(document).on('change', '.product-select', function () {
+            const unite = $(this).find(':selected').data('unite');
+            $(this).closest('tr').find('.unite-hint').text(unite ? 'en ' + unite : '');
+        });
+
         // Initialiser Select2 pour les sélections de produits
         $('.select2').select2({
             width: '100%'
@@ -218,7 +224,7 @@
         // Soumettre le formulaire de nouveau client
         $('#newCustomerForm').submit(function(e) {
             e.preventDefault();
-            
+
             // Récupérer les données du formulaire
             let formData = {
                 customerName: $('#customerName').val(),
@@ -228,16 +234,16 @@
                 address: $('#address').val(),
                 _token: '{{ csrf_token() }}'
             };
-            
+
             // Validation basique
             if (!formData.customerName) {
                 alert('Le nom du client est requis');
                 return;
             }
-            
+
             // Désactiver le bouton pendant l'envoi
             $('#saveCustomerBtn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Enregistrement...');
-            
+
             // Envoyer la requête AJAX
             $.ajax({
                 url: '{{ route("customers.quick-add") }}',
@@ -247,16 +253,16 @@
                     if (response.success) {
                         // Ajouter le nouveau client au select
                         const newOption = new Option(
-                            response.customer.customerName + ' - ' + (response.customer.mark || ''), 
-                            response.customer.id, 
-                            true, 
+                            response.customer.customerName + ' - ' + (response.customer.mark || ''),
+                            response.customer.id,
+                            true,
                             true
                         );
                         $('#customerSelect').append(newOption).trigger('change');
-                        
+
                         // Fermer le modal
                         $('#addCustomerModal').modal('hide');
-                        
+
                         // Afficher un message de succès
                         showModal('Client ajouté avec succès');
                     } else {
@@ -287,30 +293,31 @@
         function addProductRow(productData = null) {
             const index = productIndex++;
             const rowId = 'product_row_' + index;
-            
+
             let html = `
                 <tr id="${rowId}" class="product-row">
                     <td>
                         <select name="products[${index}][product_id]" class="form-control product-select" required onchange="updateProductDetails(this, ${index})">
                             <option value="">Sélectionner un produit</option>
             `;
-            
+
             // Ajouter les options de produits
             products.forEach(product => {
                 const selected = (productData && productData.product_id == product.id) ? 'selected' : '';
-                html += `<option value="${product.id}" data-price="${product.price ?? product.price_sale}" ${selected}>${product.libelle}</option>`;
+                html += `<option value="${product.id}" data-price="${product.price ?? product.price_sale}" data-unite="${product.unite_pluriel}" data-plancher="${product.plancher}" data-plancher-origine="${product.plancher_origine}" ${selected}>${product.libelle} — ${product.unite_libelle}</option>`;
             });
-            
+
             html += `
                         </select>
                     ${fundSelect(index, productData ? productData.fund_id : null)}
                     </td>
                     <td>
-                        <input type="number" name="products[${index}][quantity]" class="form-control quantity-input" 
+                        <input type="number" name="products[${index}][quantity]" class="form-control quantity-input"
                                min="1" value="${productData ? productData.quantity : 1}" required onchange="updateLineTotal(this, ${index})">
+                        <small class="text-muted unite-hint">${productData ? 'en ' + (products.find(p => p.id == productData.product_id)?.unite_pluriel || '') : ''}</small>
                     </td>
                     <td>
-                        <input type="number" name="products[${index}][unit_price]" class="form-control price-input" 
+                        <input type="number" name="products[${index}][unit_price]" class="form-control price-input"
                                step="0.01" min="0" value="${productData ? productData.unit_price : ''}" required onchange="updateLineTotal(this, ${index})">
                     </td>
                     <td class="line-total">${productData ? (productData.quantity * productData.unit_price).toLocaleString() + ' FG' : '0 FG'}</td>
@@ -321,30 +328,51 @@
                     </td>
                 </tr>
             `;
-            
+
             $('#productsContainer').append(html);
-            
+
             // Initialiser Select2 pour la nouvelle ligne
             $(`#${rowId} .product-select`).select2({
                 width: '100%'
             });
-            
+
             // Si on a des données, mettre à jour les champs
             if (productData) {
                 $(`#${rowId} .price-input`).val(productData.unit_price);
                 updateLineTotal($(`#${rowId} .quantity-input`)[0], index);
             }
-            
+
             updateGrandTotal();
         }
 
         // Mettre à jour le total de la ligne
+        // Plancher de vente (prix minimum de la fiche ou prix de revient) :
+            // même règle que le serveur, qui refuse de toute façon l'enregistrement.
+            function signalerPlancher(input, plancher, origine) {
+                if (!input) return;
+                let aide = input.parentElement.querySelector('.plancher-aide');
+                if (!aide) {
+                    aide = document.createElement('small');
+                    aide.className = 'plancher-aide d-block';
+                    input.insertAdjacentElement('afterend', aide);
+                }
+                const prix = parseFloat(input.value) || 0;
+                const trop = plancher > 0 && prix > 0 && prix < plancher;
+                input.classList.toggle('is-invalid', trop);
+                aide.style.color = trop ? '#d92d20' : '#66695A';
+                aide.textContent = plancher > 0
+                    ? (trop ? 'Trop bas : minimum ' : 'Minimum : ') + Number(plancher).toLocaleString('fr-FR') + ' GNF (' + origine + ')'
+                    : '';
+            }
+
         window.updateLineTotal = function(element, index) {
             const row = $(element).closest('tr');
+            const choix = row.find('.product-select option:selected');
+            signalerPlancher(row.find('.price-input')[0], parseFloat(choix.data('plancher')) || 0, choix.data('plancher-origine') || '');
             const quantity = parseFloat(row.find('.quantity-input').val()) || 0;
             const price = parseFloat(row.find('.price-input').val()) || 0;
             const total = quantity * price;
-            
+
             row.find('.line-total').text(total.toLocaleString() + ' FG');
             updateGrandTotal();
         };
@@ -354,7 +382,7 @@
             const selectedOption = $(select).find(':selected');
             const price = selectedOption.data('price') || 0;
             const row = $(select).closest('tr');
-            
+
             row.find('.price-input').val(price);
             updateLineTotal(select, index);
         };
@@ -363,7 +391,7 @@
         window.removeProductRow = function(rowId) {
             $('#' + rowId).remove();
             updateGrandTotal();
-            
+
             if ($('#productsContainer tr').length === 0) {
                 $('#noProductsAlert').show();
             }
@@ -377,9 +405,9 @@
                 const price = parseFloat($(this).find('.price-input').val()) || 0;
                 total += quantity * price;
             });
-            
+
             $('#totalAmount').text(total.toLocaleString() + ' FG');
-            
+
             // Ajouter un champ caché pour le total
             if ($('#totalAmountInput').length) {
                 $('#totalAmountInput').val(total);
@@ -391,31 +419,31 @@
         // Validation du formulaire avant soumission
         $('#devisForm').submit(function(e) {
             const productCount = $('.product-row').length;
-            
+
             if (productCount === 0) {
                 e.preventDefault();
                 alert('Veuillez ajouter au moins un produit au devis.');
                 return false;
             }
-            
+
             // Vérifier que tous les champs requis sont remplis
             let valid = true;
             $('.product-row').each(function() {
                 const productId = $(this).find('.product-select').val();
                 const quantity = $(this).find('.quantity-input').val();
                 const price = $(this).find('.price-input').val();
-                
+
                 if (!productId || !quantity || quantity <= 0 || !price || price <= 0) {
                     valid = false;
                 }
             });
-            
+
             if (!valid) {
                 e.preventDefault();
                 alert('Veuillez remplir correctement toutes les lignes de produits.');
                 return false;
             }
-            
+
             return true;
         });
 

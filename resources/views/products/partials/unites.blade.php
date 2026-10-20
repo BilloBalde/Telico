@@ -1,25 +1,27 @@
-{{-- Unités de vente du produit. Le stock et les prix de la fiche sont exprimés
-     dans l'unité de base (la pièce, ou le rouleau) ; au point de vente, le
-     vendeur choisit l'unité et le prix se calcule (carton de 24 = 24 × prix). --}}
+{{-- Unité unique du produit. Le stock, les prix, les achats, les ventes et
+     les factures du produit sont tous comptés dans cette unité. --}}
 @php
-    $unitesCochees = old('unites_vente', isset($product) ? $product->codesUnites() : ['pcs']);
+    $uniteChoisie = old('unite', isset($product) ? $product->unite : 'pcs');
 @endphp
-<div class="form-section" id="unitesVente">
-    <div class="form-section-title"><i class="fa fa-boxes"></i> Unités de vente</div>
+<div class="form-section" id="uniteProduit">
+    <div class="form-section-title"><i class="fa fa-boxes"></i> Unité du produit</div>
     <p class="text-muted" style="font-size:13px;margin-bottom:10px;">
-        Cochez les unités dans lesquelles ce produit peut être vendu. Le stock et les prix ci-dessous sont comptés
-        <strong>à la pièce</strong> (ou au rouleau pour un produit vendu au rouleau).
+        Le produit est acheté, stocké, vendu et facturé <strong>uniquement</strong> dans cette unité.
+        @isset($product)
+            Changer l'unité ne convertit pas le stock existant : corrigez le stock ci-dessous si besoin.
+        @endisset
     </p>
     <div class="d-flex flex-wrap gap-3 mb-3">
         @foreach (\App\Models\Product::UNITES as $code => $unite)
             <label class="form-check-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-                <input type="checkbox" class="form-check-input unite-check" name="unites_vente[]" value="{{ $code }}"
-                       style="margin:0;" {{ in_array($code, (array) $unitesCochees, true) ? 'checked' : '' }}>
+                <input type="radio" class="form-check-input unite-radio" name="unite" value="{{ $code }}"
+                       data-singulier="{{ mb_strtolower($unite['libelle']) }}" data-pluriel="{{ $unite['pluriel'] }}"
+                       style="margin:0;" {{ $uniteChoisie === $code ? 'checked' : '' }} required>
                 {{ $unite['libelle'] }}{{ $code === 'douzaine' ? ' (12 pcs)' : '' }}
             </label>
         @endforeach
     </div>
-    @error('unites_vente') <div class="text-danger mb-2">{{ $message }}</div> @enderror
+    @error('unite') <div class="text-danger mb-2">{{ $message }}</div> @enderror
     <div class="row">
         <div class="col-lg-4 col-sm-6 col-12" data-unite-champ="carton">
             <div class="form-group">
@@ -49,26 +51,23 @@
 </div>
 <script>
     (function () {
-        const bloc = document.getElementById('unitesVente');
-        const cases = bloc.querySelectorAll('.unite-check');
+        const bloc = document.getElementById('uniteProduit');
+        const radios = bloc.querySelectorAll('.unite-radio');
         function rafraichir() {
-            const coches = Array.from(cases).filter(c => c.checked).map(c => c.value);
+            const choisi = Array.from(radios).find(r => r.checked) || radios[0];
             bloc.querySelectorAll('[data-unite-champ]').forEach(function (champ) {
-                const actif = coches.includes(champ.dataset.uniteChamp);
+                const actif = champ.dataset.uniteChamp === choisi.value;
                 champ.style.display = actif ? '' : 'none';
                 champ.querySelector('input').required = actif;
             });
+            // Libellés du formulaire qui suivent l'unité : « Stock initial (cartons) »,
+            // « Prix de revient par carton ».
+            document.querySelectorAll('[data-unite-singulier]').forEach(el => el.textContent = choisi.dataset.singulier);
+            document.querySelectorAll('[data-unite-pluriel]').forEach(el => el.textContent = choisi.dataset.pluriel);
         }
-        cases.forEach(c => c.addEventListener('change', function () {
-            // Le stock d'un produit vendu au rouleau est compté en rouleaux :
-            // le rouleau ne se combine pas avec les unités en pièces.
-            if (this.checked && this.value === 'rouleau') {
-                cases.forEach(o => { if (o.value !== 'rouleau') o.checked = false; });
-            } else if (this.checked) {
-                cases.forEach(o => { if (o.value === 'rouleau') o.checked = false; });
-            }
-            rafraichir();
-        }));
+        radios.forEach(r => r.addEventListener("change", rafraichir));
+        // Les libellés de stock et de prix sont plus bas dans la page.
+        document.addEventListener("DOMContentLoaded", rafraichir);
         rafraichir();
     })();
 </script>

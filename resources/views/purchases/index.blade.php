@@ -202,7 +202,7 @@
                     document.getElementById('productCBM').innerText = cbm;
 
                     // Update image source
-                    document.getElementById('productImage').src = image ? `{{ asset('products/') }}/${image}` : "{{ asset('assets/img/no-image.jpg') }}";
+                    document.getElementById('productImage').src = image ? `{{ asset('products/') }}/${image}` : "{{ asset('assets/img/produit-sans-photo.svg') }}";
                 });
             });
         </script>

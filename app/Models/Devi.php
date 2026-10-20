@@ -92,6 +92,24 @@ class Devi extends Model
     /**
      * Valider le devis - cela créera une facture et affectera le stock
      */
+    /**
+     * Refuse toute ligne vendue sous le plancher de vente du produit (prix
+     * minimum de la fiche, ou coût de revient du propriétaire de la marchandise).
+     *
+     * @throws \RuntimeException
+     */
+    public function verifierPrix(): void
+    {
+        $funds = app(\App\Services\FundService::class);
+        foreach ($this->lines()->with('product')->get() as $line) {
+            if (! $line->product) {
+                continue;
+            }
+            $cout = $line->fund_id ? $funds->unitCost((int) $line->fund_id, (int) $line->product_id) : null;
+            $line->product->verifierPrixDeVente((float) $line->unit_price, $cout);
+        }
+    }
+
     public function validate()
     {
         if ($this->status !== 'accepted') {
@@ -136,6 +154,10 @@ class Devi extends Model
             $numero = Facture::prochainNumero();
             $total = (float) $this->lines->sum('total_price');
             $funds = app(\App\Services\FundService::class);
+
+            // Prix de chaque ligne contrôlés avant toute écriture : un devis
+            // négocié sous le prix minimum ou à perte n'est pas transformé en vente.
+            $this->verifierPrix();
 
             foreach ($this->lines as $line) {
                 $fundId = $line->fund_id ? (int) $line->fund_id : null;

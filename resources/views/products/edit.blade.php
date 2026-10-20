@@ -156,11 +156,11 @@
                                                 </div>
                                                 <div class="mb-2">
                                                     <strong>Stock dans ce magasin :</strong>
-                                                    <span id="stockForStore">{{ $quantityForUser }}</span>
+                                                    <span id="stockForStore">{{ $quantityForUser }}</span> <span data-unite-pluriel>{{ \App\Models\Product::motUnite($product->unite, 2) }}</span>
                                                 </div>
                                                 <div class="text-muted">
                                                     <strong>Stock total (tous magasins) :</strong>
-                                                    <span>{{ $totalQty }}</span>
+                                                    <span>{{ $totalQty }}</span> <span data-unite-pluriel>{{ \App\Models\Product::motUnite($product->unite, 2) }}</span>
                                                 </div>
                                                 <input type="hidden" id="store_id" value="{{ $userStoreId }}">
                                             @else
@@ -181,11 +181,11 @@
                                                     <div class="col-md-6">
                                                         <div>
                                                             <strong>Stock dans ce magasin :</strong>
-                                                            <span id="stockForStore">0</span>
+                                                            <span id="stockForStore">0</span> <span data-unite-pluriel>{{ \App\Models\Product::motUnite($product->unite, 2) }}</span>
                                                         </div>
                                                         <div class="text-muted">
                                                             <strong>Stock total (tous magasins) :</strong>
-                                                            <span>{{ $totalQty }}</span>
+                                                            <span>{{ $totalQty }}</span> <span data-unite-pluriel>{{ \App\Models\Product::motUnite($product->unite, 2) }}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -193,7 +193,7 @@
                                         </div>
                                         <div class="col-lg-6 col-sm-6 col-6">
                                             <div class="form-group">
-                                                <label for="stock_restant">Stock global</label>
+                                                <label for="stock_restant">Stock global (en <span data-unite-pluriel>pièces</span>)</label>
                                                 <input type="number" id="stock_restant" name="stock_restant" class="form-control" value="{{ old('stock_restant', $totalQty) }}">
                                                 @error('stock_restant')
                                                 <span class="text-danger">{{ $message }}</span>
@@ -217,24 +217,25 @@
                                 <div class="form-section">
                                     <div class="form-section-title"><i class="fa fa-tag"></i> Tarification</div>
                                     <div class="row">
-                                        <div class="col-lg-6 col-sm-6 col-12">
+                                        <div class="col-lg-4 col-sm-6 col-12">
                                             <div class="form-group">
-                                                <label for="price">Prix de Vente(FG)</label>
+                                                <label for="price">Prix de Vente par <span data-unite-singulier>pièce</span> (FG)</label>
                                                 <input type="text" id="price" name="price" class="form-control" value="{{ old('price', $product->price) }}">
                                                 @error('price')
                                                 <span class="text-danger">{{ $message }}</span>
                                                 @enderror
                                             </div>
                                         </div>
-                                        <div class="col-lg-6 col-sm-6 col-12">
+                                        <div class="col-lg-4 col-sm-6 col-12">
                                             <div class="form-group">
-                                                <label for="price_sale">Prix de Revient(FG)</label>
+                                                <label for="price_sale">Prix de Revient par <span data-unite-singulier>pièce</span> (FG)</label>
                                                 <input type="text" id="price_sale" name="price_sale" class="form-control" value="{{ old('price_sale', $product->price_sale ?? 0) }}">
                                                 @error('price_sale')
                                                 <span class="text-danger">{{ $message }}</span>
                                                 @enderror
                                             </div>
                                         </div>
+                                        @include('products.partials.prix-minimum')
                                     </div>
                                 </div>
 

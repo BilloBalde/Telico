@@ -24,4 +24,24 @@ class DebtReminder extends Model
     {
         return $this->belongsTo(Facture::class);
     }
+
+    /**
+     * Rappels visibles par l'utilisateur : tous pour une vue globale ; pour un
+     * employé rattaché, ceux des factures de son périmètre (ou, sans facture
+     * précise, ceux des clients qui ont des factures dans ce périmètre).
+     */
+    public function scopeVisibleTo(\Illuminate\Database\Eloquent\Builder $query, ?User $user): \Illuminate\Database\Eloquent\Builder
+    {
+        if (! $user || ! $user->isStoreScoped()) {
+            return $query;
+        }
+
+        $ids = $user->accessibleStoreIds();
+
+        return $query->where(fn ($q) => $q
+            ->whereHas('facture', fn ($f) => $f->whereIn('store_id', $ids))
+            ->orWhere(fn ($sans) => $sans
+                ->whereNull('facture_id')
+                ->whereHas('customer.factures', fn ($f) => $f->whereIn('store_id', $ids))));
+    }
 }

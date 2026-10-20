@@ -14,7 +14,7 @@
                     <select name="product_id" class="form-control" required>
                         <option value="">Choisir un produit</option>
                         @foreach ($products as $p)
-                        <option value="{{ $p->id }}" {{ (string) request('product_id') === (string) $p->id ? 'selected' : '' }}>{{ $p->libelle }} ({{ $p->sku }})</option>
+                        <option value="{{ $p->id }}" {{ (string) request('product_id') === (string) $p->id ? 'selected' : '' }}>{{ $p->libelle }} ({{ $p->sku }}) — {{ $p->unite_libelle }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -33,13 +33,13 @@
             <div class="d-flex flex-wrap gap-2">
                 @forelse ($balances as $b)
                     <a href="{{ route('stock.show', $b->store_id) }}" class="badge bg-light text-dark" style="font-size:13px;border:1px solid #E2E3CF;">
-                        {{ $b->store?->store_name }} ({{ $b->store?->type_label }}) : {{ number_format($b->quantity, 0, ',', ' ') }}
+                        {{ $b->store?->store_name }} ({{ $b->store?->type_label }}) : {{ $product->quantiteAvecUnite($b->quantity) }}
                     </a>
                 @empty
                     <span class="text-muted">Aucun stock dans votre périmètre.</span>
                 @endforelse
             </div>
-            <div class="mt-2"><strong>Total : {{ number_format($balances->sum('quantity'), 0, ',', ' ') }}</strong></div>
+            <div class="mt-2"><strong>Total : {{ $product->quantiteAvecUnite($balances->sum('quantity')) }}</strong></div>
         </div>
     </div>
     <div class="card">

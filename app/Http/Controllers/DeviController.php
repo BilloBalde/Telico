@@ -58,9 +58,17 @@ class DeviController extends Controller
     public function create()
     {
         $stores = Store::all();
-        $products = Product::with('stores')->get();
+        $products = Product::with('stores')->get()
+            // Unité unique de chaque produit, affichée dans le choix du produit.
+            ->each(function ($p) {
+                $p->setAttribute('unite_pluriel', Product::motUnite($p->unite, 2))->append('unite_libelle');
+                // Plancher de vente, signalé à la saisie des prix du devis.
+                [$plancher, $origine] = $p->plancherDeVente();
+                $p->setAttribute('plancher', $plancher);
+                $p->setAttribute('plancher_origine', $origine === 'minimum' ? 'prix de vente minimum' : 'prix de revient');
+            });
         $customers = Customer::all();
-        
+
         // For staff, preselect their store
         $userStoreId = null;
         if (auth()->user()->isStoreScoped()) {
@@ -93,6 +101,12 @@ class DeviController extends Controller
             if (! empty($ligne['store_id'])) {
                 $this->authorizeStore($ligne['store_id']);
             }
+        }
+
+        // Prix contrôlés dès la saisie du devis (même règle qu'à la caisse) :
+        // le vendeur le sait tout de suite, pas à la validation.
+        if ($erreur = $this->erreurDePrix((array) $request->products)) {
+            return back()->withInput()->with('error', $erreur);
         }
 
         DB::beginTransaction();
@@ -128,7 +142,7 @@ class DeviController extends Controller
             // Create devi lines
             foreach ($request->products as $productData) {
                 $totalPrice = $productData['quantity'] * $productData['unit_price'];
-                
+
                 DeviLine::create([
                     'devis_id' => $devis->id,
                     'product_id' => $productData['product_id'],
@@ -155,7 +169,8 @@ class DeviController extends Controller
     public function show($id)
     {
         $devis = Devi::with(['lines.product', 'store', 'customer', 'createdBy'])->findOrFail($id);
-        
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
+
         // Get company info for PDF
         $company = \App\Models\Company::current();
 
@@ -165,7 +180,8 @@ class DeviController extends Controller
     public function edit($id)
     {
         $devis = Devi::with('lines')->findOrFail($id);
-        
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
+
         // Can't edit if already accepted or validated
         if ($devis->status !== 'draft') {
             return redirect()->route('devis.show', $id)
@@ -173,7 +189,15 @@ class DeviController extends Controller
         }
 
         $stores = Store::all();
-        $products = Product::with('stores')->get();
+        $products = Product::with('stores')->get()
+            // Unité unique de chaque produit, affichée dans le choix du produit.
+            ->each(function ($p) {
+                $p->setAttribute('unite_pluriel', Product::motUnite($p->unite, 2))->append('unite_libelle');
+                // Plancher de vente, signalé à la saisie des prix du devis.
+                [$plancher, $origine] = $p->plancherDeVente();
+                $p->setAttribute('plancher', $plancher);
+                $p->setAttribute('plancher_origine', $origine === 'minimum' ? 'prix de vente minimum' : 'prix de revient');
+            });
         $customers = Customer::all();
 
         $funds = \App\Models\Fund::orderBy('name')->get(['id', 'name']);
@@ -183,6 +207,7 @@ class DeviController extends Controller
     public function update(Request $request, $id)
     {
         $devis = Devi::findOrFail($id);
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
 
         if ($devis->status !== 'draft') {
             return back()->with('error', 'Seuls les devis en brouillon peuvent être modifiés.');
@@ -210,6 +235,12 @@ class DeviController extends Controller
             }
         }
 
+        // Prix contrôlés dès la saisie du devis (même règle qu'à la caisse) :
+        // le vendeur le sait tout de suite, pas à la validation.
+        if ($erreur = $this->erreurDePrix((array) $request->products)) {
+            return back()->withInput()->with('error', $erreur);
+        }
+
         DB::beginTransaction();
         try {
             // Calculate total
@@ -233,7 +264,7 @@ class DeviController extends Controller
             // Create new lines
             foreach ($request->products as $productData) {
                 $totalPrice = $productData['quantity'] * $productData['unit_price'];
-                
+
                 DeviLine::create([
                     'devis_id' => $devis->id,
                     'product_id' => $productData['product_id'],
@@ -257,10 +288,31 @@ class DeviController extends Controller
         }
     }
 
+    /** Première ligne vendue sous le plancher de vente du produit, ou null. */
+    private function erreurDePrix(array $lignes): ?string
+    {
+        $funds = app(\App\Services\FundService::class);
+        foreach ($lignes as $ligne) {
+            $produit = Product::find($ligne['product_id'] ?? null);
+            if (! $produit) {
+                continue;
+            }
+            $cout = ! empty($ligne['fund_id']) ? $funds->unitCost((int) $ligne['fund_id'], (int) $produit->id) : null;
+            try {
+                $produit->verifierPrixDeVente((float) ($ligne['unit_price'] ?? 0), $cout);
+            } catch (\RuntimeException $e) {
+                return $e->getMessage();
+            }
+        }
+
+        return null;
+    }
+
     public function destroy($id)
     {
         $devis = Devi::findOrFail($id);
-        
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
+
         // Can only delete draft devis
         if ($devis->status !== 'draft') {
             return back()->with('error', 'Seuls les devis en brouillon peuvent être supprimés.');
@@ -278,6 +330,7 @@ class DeviController extends Controller
     public function changeStatus(Request $request, $id)
     {
         $devis = Devi::findOrFail($id);
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
 
         $request->validate([
             'status' => 'required|in:draft,sent,accepted,rejected,expired',
@@ -302,6 +355,7 @@ class DeviController extends Controller
     public function validateDevis($id)
     {
         $devis = Devi::with('lines')->findOrFail($id);
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
 
         if ($devis->status !== 'accepted') {
             return back()->with('error', 'Seuls les devis acceptés peuvent être validés.');
@@ -325,18 +379,20 @@ class DeviController extends Controller
     public function showPdf($id)
     {
         $devis = Devi::with(['lines.product', 'store', 'customer', 'createdBy'])->findOrFail($id);
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
         $company = \App\Models\Company::current();
-        
+
         return view('devis.pdf', compact('devis', 'company'));
     }
 
     public function downloadPdf($id)
     {
         $devis = Devi::with(['lines.product', 'store', 'customer', 'createdBy'])->findOrFail($id);
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
         $company = \App\Models\Company::current();
-        
+
         $html = view('devis.pdf', compact('devis', 'company'))->render();
-        
+
         $pdf = Pdf::loadHTML($html);
         $pdf->setPaper('A4', 'portrait');
         $pdf->setOptions([
@@ -354,6 +410,7 @@ class DeviController extends Controller
     public function generatePdf($id)
     {
         $devis = Devi::with(['lines.product', 'store', 'customer', 'createdBy'])->findOrFail($id);
+        $this->autoriserPerimetre($devis->store_id, 'Ce devis appartient à un autre magasin.');
         $company = \App\Models\Company::current();
 
         $pdf = Pdf::loadView('devis.pdf', compact('devis', 'company'));

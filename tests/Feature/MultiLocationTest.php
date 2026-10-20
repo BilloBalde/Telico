@@ -424,7 +424,7 @@ class MultiLocationTest extends TestCase
 
         // Vente : une ligne en défaut → rien n'est enregistré ni débité.
         $this->vendre($this->admin, $this->madina, [[$this->ciment, 50, $this->madina], [$this->carton, 15, $this->entrepot5]])
-            ->assertSessionHas('error', fn ($m) => str_contains($m, 'Stock insuffisant pour Carton carreaux à Entrepôt 5. Disponible : 10. Demandé : 15.'));
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'Stock insuffisant pour Carton carreaux à Entrepôt 5. Disponible : 10 pièces. Demandé : 15 pièces.'));
         $this->assertSame(100, $this->stock($this->madina, $this->ciment));
         $this->assertSame(10, $this->stock($this->entrepot5, $this->carton));
         $this->assertSame(0, Sale::count() + Facture::count() + StockMovement::where('type', StockMovement::SALE)->count());
@@ -438,7 +438,7 @@ class MultiLocationTest extends TestCase
 
         $this->actingAs($this->admin)->postJson(route('admin.orders.approve', $order), [
             'store_id' => $this->madina->id, 'locations' => [$a->id => $this->madina->id, $b->id => $this->entrepot5->id],
-        ])->assertStatus(422)->assertJsonFragment(['message' => 'Erreur : Stock insuffisant pour Carton carreaux à Entrepôt 5. Disponible : 10. Demandé : 15.']);
+        ])->assertStatus(422)->assertJsonFragment(['message' => 'Erreur : Stock insuffisant pour Carton carreaux à Entrepôt 5. Disponible : 10 pièces. Demandé : 15 pièces.']);
 
         $this->assertSame('pending', $order->fresh()->status);
         $this->assertSame(100, $this->stock($this->madina, $this->ciment));

@@ -126,7 +126,7 @@
                                             <td><a href="{{ route('voirSales', $data->numero_facture) }}">{{ $data->numero_facture }}</a></td>
                                             <td>{{ $data->customer?->customerName ?? 'N/A' }}</td>
                                             <td>{{ $data->store?->store_name ?? 'N/A' }}</td>
-                                            <td>{{ $data->quantity }}</td>
+                                            <td>{{ $data->quantite_resumee }}</td>
                                             <td>{{ $data->montant_total }}</td>
                                             <td>{{ $data->interet_total ?? 0 }}</td>
                                             <td>{{ $data->paiements->first()?->total_paye }}</td>

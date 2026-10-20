@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Sale extends Model
 {
-    use HasFactory;
+    use HasFactory, Concerns\FigeUniteProduit;
     protected $guarded = ['id'];
 
     public function getProduitAttribute(){
@@ -18,32 +18,22 @@ class Sale extends Model
         return $this->product?->image;
     }
 
-    /**
-     * Quantité telle que vendue, pour la facture : « 2 cartons (48 pcs) »,
-     * « 3 rouleaux », « 5 pcs ». Les lignes antérieures aux unités de vente
-     * n'ont pas d'unité et s'affichent en pièces, comme avant.
-     */
-    public function getQuantiteAfficheeAttribute(): string
-    {
-        $nombre = fn ($n) => number_format((float) $n, 0, ',', ' ');
-
-        if (! $this->unite || $this->unite === 'pcs' || ! $this->quantite_unite) {
-            return $nombre($this->quantity).' pcs';
-        }
-
-        $unite = Product::UNITES[$this->unite] ?? null;
-        $mot = $unite
-            ? mb_strtolower($this->quantite_unite > 1 ? $unite['pluriel'] : $unite['libelle'])
-            : $this->unite;
-        $texte = $nombre($this->quantite_unite).' '.$mot;
-
-        return $this->unite === 'rouleau' ? $texte : $texte.' ('.$nombre($this->quantity).' pcs)';
-    }
-
-    /** Prix par unité vendue (par carton, par paquet…), sinon par pièce. */
+    /** Prix par unité vendue (par carton, par douzaine…). */
     public function getPrixAfficheAttribute(): float
     {
-        return (float) ($this->prix_unite ?? $this->prix);
+        return (float) $this->prix;
+    }
+
+    /** Partenaire chez qui le produit a été pris (vente tierce). */
+    public function partner()
+    {
+        return $this->belongsTo(Partner::class);
+    }
+
+    /** Ce que la ligne doit au partenaire : prix payé × quantité. */
+    public function getDuPartenaireAttribute(): float
+    {
+        return $this->is_third_party ? (float) $this->purchase_price_from_partner * (float) $this->quantity : 0.0;
     }
 
     public function product()

@@ -196,6 +196,8 @@ class OrderManagementController extends Controller
                 'store_id'  => $lineKey,
                 'name'      => $product->libelle ?? 'Produit #' . $product->id,
                 'requested' => $item->quantity,
+                // Unité de la ligne pour les libellés (« 3 cartons demandés »).
+                'unite'     => \App\Models\Product::motUnite($item->unite ?: $product->unite, 2),
                 'available' => $available,
                 'ok'        => $ok,
                 'per_store' => $perStore,
@@ -497,6 +499,8 @@ class OrderManagementController extends Controller
             'quantity'           => $item->quantity,
             'quantity_delivered' => $item->quantity_delivered ?? 0,
             'quantity_remaining' => max(0, $item->quantity - ($item->quantity_delivered ?? 0)),
+            // Unité de la ligne (« cartons »), pour les quantités de la fenêtre de livraison.
+            'unite'              => \App\Models\Product::motUnite($item->unite ?: $item->product?->unite, 2),
         ]);
 
         return response()->json($items);
@@ -569,7 +573,7 @@ class OrderManagementController extends Controller
      */
     public function factures(Request $request)
     {
-        $query = Facture::with(['customer', 'store', 'paiements', 'order.user', 'order.items.product'])
+        $query = Facture::with(['customer', 'store', 'paiements', 'sales:id,numeroFacture,product_id,quantity,unite', 'order.user', 'order.items.product'])
             ->whereHas('order', fn ($q) => $q->visibleTo(auth()->user()))
             ->where('numero_facture', 'like', 'INV-%')
             ->latest();

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class StockTransfer extends Model
 {
-    use HasFactory;
+    use HasFactory, Concerns\FigeUniteProduit;
 
     public const PENDING = 'pending';
     public const APPROVED = 'approved';
@@ -27,7 +27,7 @@ class StockTransfer extends Model
     ];
 
     protected $fillable = [
-        'reference', 'product_id', 'from_store_id', 'to_store_id', 'quantity', 'status', 'fund_id',
+        'reference', 'product_id', 'from_store_id', 'to_store_id', 'quantity', 'unite', 'status', 'fund_id',
         'requested_by', 'approved_by', 'shipped_by', 'received_by',
         'approved_at', 'shipped_at', 'received_at', 'notes',
     ];

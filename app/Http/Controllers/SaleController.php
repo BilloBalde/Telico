@@ -385,7 +385,12 @@ class SaleController extends Controller
             'paid_by'       => 'nullable|string',
             'notes'         => 'nullable|string',
             'sales'                              => 'required|array|min:1',
-            'sales.*.product_id'                 => 'required|exists:products,id',
+            // Produit du catalogue, ou — pour un produit pris chez un partenaire
+            // et absent du catalogue — un nouveau produit (libellé + unité),
+            // créé avec la vente.
+            'sales.*.product_id'                 => 'nullable|required_without:sales.*.nouveau_libelle|exists:products,id',
+            'sales.*.nouveau_libelle'            => 'nullable|string|max:225',
+            'sales.*.nouvelle_unite'             => 'nullable|in:'.implode(',', array_keys(Product::UNITES)),
             // Emplacement source de la ligne (magasin, stock interne, entrepôt).
             // Absent : la ligne sort du magasin de la vente, comme avant.
             'sales.*.store_id'                   => 'nullable|exists:stores,id',
@@ -393,9 +398,6 @@ class SaleController extends Controller
             // sinon le fonds d'un associé (choisi par le vendeur, ligne par ligne).
             'sales.*.fund_id'                    => 'nullable|exists:funds,id',
             'sales.*.quantity'                   => 'required|integer|min:1',
-            // Unité choisie par le vendeur (pièce, douzaine, carton, paquet,
-            // rouleau). La quantité et le prix saisis sont dans cette unité.
-            'sales.*.unite'                      => 'nullable|in:'.implode(',', array_keys(Product::UNITES)),
             'sales.*.prix'                       => 'required|numeric|min:0',
             'sales.*.partner_id'                 => 'nullable|exists:partners,id',
             'sales.*.purchase_price_from_partner'=> 'nullable|numeric|min:0',
@@ -421,7 +423,15 @@ class SaleController extends Controller
         }
 
         $salesData = $request->input('sales') ?? [];
-        $salesData = array_values(array_filter($salesData, fn($row) => !empty($row['product_id'])));
+        $salesData = array_values(array_filter($salesData, fn($row) => !empty($row['product_id']) || !empty($row['nouveau_libelle'])));
+
+        // Un produit hors catalogue n'est accepté que pris chez un partenaire :
+        // il n'existe pas dans le stock.
+        foreach ($salesData as $row) {
+            if (empty($row['product_id']) && (empty($row['is_third_party']) || $row['is_third_party'] != '1')) {
+                return redirect()->back()->with('error', "Un produit absent du catalogue ne peut être vendu que s'il est pris chez un partenaire.")->withInput();
+            }
+        }
 
         if (empty($salesData)) {
             return redirect()->back()->with('error', 'Veuillez ajouter au moins un produit.')->withInput();
@@ -441,30 +451,6 @@ class SaleController extends Controller
             $salesData[$index]['store_id'] = $lineStoreId;
         }
 
-        // Conversion dans l'unité de base du stock, d'après la fiche produit
-        // (jamais d'après le navigateur) : 2 cartons de 24 à 120 000 GNF
-        // = 48 pièces à 5 000 GNF. La saisie d'origine est gardée pour la facture.
-        foreach ($salesData as $index => $data) {
-            $produit = Product::find($data['product_id']);
-            $unite = ($data['unite'] ?? null) ?: 'pcs';
-            $facteur = $produit?->facteurUnite($unite);
-            if (! $facteur) {
-                return redirect()->back()
-                    ->with('error', sprintf('« %s » ne se vend pas en %s.', $produit?->libelle ?? 'Ce produit', mb_strtolower(Product::UNITES[$unite]['libelle'] ?? $unite)))
-                    ->withInput();
-            }
-            $salesData[$index] = array_merge($data, [
-                'unite'          => $unite,
-                'quantite_unite' => (int) $data['quantity'],
-                'facteur_unite'  => $facteur,
-                'prix_unite'     => (float) $data['prix'],
-                'quantity'       => (int) $data['quantity'] * $facteur,
-                'prix'           => (float) $data['prix'] / $facteur,
-                'purchase_price_from_partner' => isset($data['purchase_price_from_partner']) && $data['purchase_price_from_partner'] !== ''
-                    ? (float) $data['purchase_price_from_partner'] / $facteur
-                    : null,
-            ]);
-        }
         if (! $user->canAccessStore((int) $request->store_id)) {
             return redirect()->back()->with('error', "Vous n'êtes pas autorisé à vendre pour ce magasin.")->withInput();
         }
@@ -489,8 +475,11 @@ class SaleController extends Controller
             foreach ($salesData as $data) {
                 $isThirdParty = !empty($data['is_third_party']) && $data['is_third_party'] == "1";
 
-                $data['prixTotal'] = $data['prix_unite'] * $data['quantite_unite'];
+                $data['prixTotal'] = $data['prix'] * $data['quantity'];
 
+                if (empty($data['product_id'])) {
+                    $data['product_id'] = $this->produitHorsCatalogue($data)->id;
+                }
                 $product = Product::find($data['product_id']);
                 $libelle = $product?->libelle ?? 'Produit inconnu';
 
@@ -501,7 +490,7 @@ class SaleController extends Controller
                     }
 
                     $prixAmi = (float) $data['purchase_price_from_partner'];
-                    $this->assertPriceCoversCost($libelle, $data['prix_unite'], $prixAmi * $data['facteur_unite']);
+                    $this->assertPriceCoversCost($libelle, (float) $data['prix'], $prixAmi);
 
                     $data['interet'] = $data['prixTotal'] - $prixAmi * $data['quantity'];
                     $data['is_third_party'] = true;
@@ -516,7 +505,13 @@ class SaleController extends Controller
                     $prix_achat = $fundId
                         ? $funds->unitCost($fundId, (int) $data['product_id'])
                         : ($product ? $this->resolveUnitCost($product) : 0.0);
-                    $this->assertPriceCoversCost($libelle, $data['prix_unite'], $prix_achat * $data['facteur_unite']);
+                    // Plancher : le plus haut du prix de vente minimum (fiche produit)
+                    // et du coût de revient du propriétaire de la marchandise.
+                    if ($product) {
+                        $product->verifierPrixDeVente((float) $data['prix'], $prix_achat);
+                    } else {
+                        $this->assertPriceCoversCost($libelle, (float) $data['prix'], $prix_achat);
+                    }
                     $data['fund_id'] = $fundId;
                     $data['unit_cost'] = $prix_achat > 0 ? $prix_achat : null;
 
@@ -542,10 +537,6 @@ class SaleController extends Controller
                     'product_id'                  => $data['product_id'],
                     'prix'                        => $data['prix'],
                     'quantity'                    => $data['quantity'],
-                    'unite'                       => $data['unite'],
-                    'quantite_unite'              => $data['quantite_unite'],
-                    'facteur_unite'               => $data['facteur_unite'],
-                    'prix_unite'                  => $data['prix_unite'],
                     'prixTotal'                   => $data['prixTotal'],
                     'interet'                     => $data['interet'],
                     'store_id'                    => $data['store_id'],
@@ -671,13 +662,26 @@ class SaleController extends Controller
                 ->values(),
         ]);
         $locationLabels = $locations->mapWithKeys(fn ($s) => [$s->id => $s->full_name . ' (' . $s->type_label . ')']);
-        // Unités de vente de chaque produit (pièce, carton de 24…), pour le
-        // choix d'unité sur chaque ligne.
-        $unitesByProduct = $produits->mapWithKeys(fn ($p) => [$p->id => array_values($p->unitesDisponibles())]);
+        // Unité de chaque produit (« carton », « cartons »…) pour les libellés
+        // des lignes : la quantité saisie est directement dans cette unité.
+        $unitesByProduct = $produits->mapWithKeys(fn ($p) => [$p->id => [
+            'libelle'  => $p->unite_libelle,
+            'singulier' => Product::motUnite($p->unite, 1),
+            'pluriel'  => Product::motUnite($p->unite, 2),
+        ]]);
+        // Tout le catalogue, même en rupture : un produit que la boutique n'a
+        // pas peut être pris chez un partenaire et vendu dans la même facture.
+        $produitsTiers = $produits->sortBy('libelle')->map(fn ($p) => [
+            'id'        => $p->id,
+            'libelle'   => $p->libelle,
+            'prix'      => (float) $p->price,
+            'unite'     => $p->unite_libelle,
+            'singulier' => Product::motUnite($p->unite),
+        ])->values();
         $customers = Customer::all();
         $partners = Partner::all();
         $numeroFacture = $this->prochainNumeroFacture();
-        return view('sales.pos', compact('produits', 'boutiques', 'customers', 'categories', 'userStoreId', 'numeroFacture', 'partners', 'stockByProduct', 'locationLabels', 'locationIds', 'caisseParOrigine', 'unitesByProduct'));
+        return view('sales.pos', compact('produits', 'boutiques', 'customers', 'categories', 'userStoreId', 'numeroFacture', 'partners', 'stockByProduct', 'locationLabels', 'locationIds', 'caisseParOrigine', 'unitesByProduct', 'produitsTiers'));
     }
 
     /**
@@ -800,9 +804,20 @@ class SaleController extends Controller
 
     public function exitSale($numero_facture)
     {
+        // Ancien écran « quitter sans valider » : il supprimait n'importe quelle
+        // facture d'après son numéro, sans contrôle. Seule une facture vide
+        // (aucun article vendu) de son propre périmètre peut l'être ; une vraie
+        // facture se supprime depuis la liste des factures (stock remis en place,
+        // facture encaissée protégée).
+        $facture = Facture::where('numero_facture', $numero_facture)->firstOrFail();
+        $this->autoriserPerimetre($facture->store_id, 'Cette facture appartient à un autre magasin.');
+        if (Sale::where('numeroFacture', $numero_facture)->exists()) {
+            return redirect()->route('factures.index')->with('error', 'Cette facture contient déjà des articles : supprimez-la depuis la liste des factures.');
+        }
+
         try {
-            // Delete the Purchase and Logistic record
-            Facture::where('numero_facture', $numero_facture)->delete();
+            Payment::where('facture_id', $facture->id)->delete();
+            $facture->delete();
 
             return redirect()->route('sales.index')->with('success', "Vous êtes parti sans valider, la vente a été annulé.");
         } catch (\Throwable $th) {
@@ -828,9 +843,7 @@ class SaleController extends Controller
      */
     private function assertPriceCoversCost(string $libelle, float $prixVente, float $cout): void
     {
-        // Tolérance d'un centime : un coût par carton (24 × 6 666,67) ne tombe
-        // pas juste en virgule flottante.
-        if ($cout > 0 && $prixVente < $cout - 0.01) {
+        if ($cout > 0 && $prixVente < $cout) {
             throw new \RuntimeException(sprintf(
                 'Vente à perte refusée pour « %s » : le prix de vente (%s GNF) est inférieur au prix de revient (%s GNF).',
                 $libelle,
@@ -1083,6 +1096,30 @@ class SaleController extends Controller
      * Le stock n'est pas touché : la marchandise vient du partenaire, elle n'a
      * jamais été en boutique.
      */
+    /**
+     * Produit pris chez un partenaire et absent du catalogue : retrouvé par
+     * son libellé, sinon créé (sans stock) dans l'unité choisie, pour que la
+     * vente, la facture et les rapports le désignent comme les autres.
+     */
+    private function produitHorsCatalogue(array $ligne): Product
+    {
+        $libelle = trim($ligne['nouveau_libelle']);
+        $existant = Product::whereRaw('LOWER(libelle) = ?', [mb_strtolower($libelle)])->first();
+        if ($existant) {
+            return $existant;
+        }
+
+        return Product::create([
+            'libelle'     => $libelle,
+            'sku'         => 'TIERS-' . strtoupper(substr(md5($libelle . microtime()), 0, 8)),
+            'description' => $libelle . ' (produit pris chez un partenaire)',
+            'unite'       => $ligne['nouvelle_unite'] ?? 'pcs',
+            'price'       => $ligne['prix'],
+            'price_sale'  => $ligne['purchase_price_from_partner'] ?? 0,
+            'image'       => '',
+        ]);
+    }
+
     private function produitTierce(array $ligne): Product
     {
         $produit = Product::where('sku', $ligne['sku'])->first();

@@ -36,7 +36,7 @@ class StoreProductController extends Controller
     public function index(Request $request)
     {
         $user = auth()->user();
-        $produits = Product::orderBy('libelle')->get(['id', 'libelle', 'sku']);
+        $produits = Product::orderBy('libelle')->get(['id', 'libelle', 'sku', 'unite', 'pcs_par_carton', 'pcs_par_paquet', 'dimension_rouleau']);
         // Toutes les destinations possibles (un magasin peut demander à un
         // entrepôt hors de son périmètre) ; la visibilité des transferts, elle,
         // reste limitée au périmètre.

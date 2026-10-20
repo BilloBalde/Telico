@@ -18,7 +18,10 @@ class DebtReminderController extends Controller
      */
     public function index()
     {
-        $reminders = DebtReminder::with('customer')
+        // Client archivé : chargé quand même, sinon la ligne n'a plus de client
+        // et la page entière tombait en erreur (bouton « Résolu » sans identifiant).
+        $reminders = DebtReminder::with(['customer' => fn ($q) => $q->withTrashed()])
+            ->visibleTo(auth()->user())
             ->where('status', '!=', 'resolved')
             ->get()
             ->groupBy('customer_id')
@@ -27,6 +30,7 @@ class DebtReminderController extends Controller
 
                 return (object) [
                     'customer'      => $customer,
+                    'customer_id'   => $group->first()->customer_id,
                     'total'         => $group->sum('amount'),
                     'count'         => $group->count(),
                     'max_reminders' => $group->max('reminder_count'),
@@ -45,7 +49,9 @@ class DebtReminderController extends Controller
      */
     public function resolve(int $customerId)
     {
+        // Seulement les rappels du périmètre de l'utilisateur.
         DebtReminder::where('customer_id', $customerId)
+            ->visibleTo(auth()->user())
             ->where('status', '!=', 'resolved')
             ->update(['status' => 'resolved']);
 
@@ -70,6 +76,7 @@ class DebtReminderController extends Controller
         }
 
         $reminders = DebtReminder::where('customer_id', $customerId)
+            ->visibleTo(auth()->user())
             ->where('status', '!=', 'resolved')
             ->get();
         $total = $reminders->sum('amount');

@@ -45,10 +45,11 @@
                 @endpermission
                 @permission('reports.view')
                 <li class="submenu">
-                    <a href="javascript:void(0);" class="{{ isActiveRoute(['reports.sales', 'reports.daily', 'reports.flash']) }}"><img src="{{ asset('assets/img/icons/sales1.svg') }}" alt="img"><span> Rapports</span> <span class="menu-arrow"></span></a>
+                    <a href="javascript:void(0);" class="{{ isActiveRoute(['reports.sales', 'reports.daily', 'reports.flash', 'reports.tiers']) }}"><img src="{{ asset('assets/img/icons/sales1.svg') }}" alt="img"><span> Rapports</span> <span class="menu-arrow"></span></a>
                     <ul>
                         <li><a href="{{ route('reports.sales') }}">Rapport des ventes</a></li>
                         <li><a href="{{ route('reports.flash') }}">Ventes flash</a></li>
+                        <li><a href="{{ route('reports.tiers') }}">Ventes tierces</a></li>
                         <li><a href="{{ route('reports.daily') }}">Rapport journalier</a></li>
                     </ul>
                 </li>

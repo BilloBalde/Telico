@@ -119,10 +119,15 @@ class IndexController extends Controller
             ];
         }
 
+        // Stock par type d'emplacement, détaillé par unité (cartons, pièces…) :
+        // on n'additionne pas des unités différentes.
         $stockByType = $scope(StoreProduct::query()->join('stores', 'stores.id', '=', 'store_products.store_id'), 'store_products.store_id')
-            ->selectRaw('stores.type as type, SUM(store_products.quantity) as qty')
-            ->groupBy('stores.type')
-            ->pluck('qty', 'type');
+            ->join('products', 'products.id', '=', 'store_products.product_id')
+            ->selectRaw("stores.type as type, COALESCE(products.unite, 'pcs') as unite, SUM(store_products.quantity) as qty")
+            ->groupBy('stores.type', DB::raw("COALESCE(products.unite, 'pcs')"))
+            ->get()
+            ->groupBy('type')
+            ->map(fn ($lignes) => Product::resumeQuantites($lignes));
 
         $pendingTransfers = \App\Models\StockTransfer::visibleTo($user)
             ->whereIn('status', [\App\Models\StockTransfer::PENDING, \App\Models\StockTransfer::APPROVED, \App\Models\StockTransfer::IN_TRANSIT])
@@ -156,7 +161,10 @@ class IndexController extends Controller
 
                 return redirect('login')->with('error', 'Votre compte n\'est pas encore affecté à une boutique. Demandez à un administrateur de vous en attribuer une, puis reconnectez-vous.');
             }
-            $total_credits = Customer::where('balance', '>', 0)->sum('balance');
+            // Créances et dépenses de SON périmètre : un employé rattaché ne voit
+            // pas les chiffres des autres magasins (le solde client, lui, cumule
+            // les factures de tous les magasins).
+            $total_credits = Facture::whereIn('store_id', $scopeIds)->where('reste', '>', 0)->sum('reste');
             $total_purchases = $this->totalPurchases($store_id);
             $total_sales = Sale::whereIn('store_id', $scopeIds)
                 ->whereDate('created_at', Carbon::today())
@@ -170,13 +178,13 @@ class IndexController extends Controller
             $solde_cash = Payment::whereHas('facture', function ($q) use ($store_id) {
                 $q->where('store_id', $store_id);
             })->where('paid_by', 'cash')->sum('versement');
-            $total_expenses = Expense::sum('amount');
+            $total_expenses = Expense::whereIn('store_id', $scopeIds)->sum('amount');
             $total_customers = Customer::count();
-            $total_quantities = StoreProduct::whereIn('store_id', $scopeIds)->sum('quantity');
+            $total_quantities = Product::resumeStock($scopeIds);
             // Balance = total ventes (toutes dates confondues) - total achats - total
             // dépenses de CETTE boutique — contrairement à $total_sales (ventes du
-            // jour) et $total_expenses (toutes boutiques confondues) utilisés par
-            // ailleurs sur ce dashboard. $total_purchases est déjà calculé ci-dessus
+            // jour) et $total_expenses (tout le périmètre) utilisés par ailleurs
+            // sur ce dashboard. $total_purchases est déjà calculé ci-dessus
             // (combine `purchases` + `purchase_orders`, cf. totalPurchases()).
             $total_sales_all_time_store = Facture::where('store_id', $store_id)->sum('montant_total');
             $total_expenses_store = Expense::where('store_id', $store_id)->sum('amount');
@@ -220,7 +228,7 @@ class IndexController extends Controller
             $solde_cash = Payment::where('paid_by', 'cash')->sum('versement');
             $total_expenses = Expense::sum('amount');
             $total_customers = Customer::count();
-            $total_quantities = StoreProduct::sum('quantity');
+            $total_quantities = Product::resumeStock();
             $total_purchase_invoices = Purchase::count() + PurchaseOrder::where('status', '!=', 'cancelled')->count();
             $total_sales_invoices = Facture::count();
             $total_third_party_interest = Sale::where('is_third_party', true)->sum('interet');
@@ -300,7 +308,7 @@ class IndexController extends Controller
             ->having('pcs', '<=', 100)
             ->orderBy('pcs')
             ->take(100)
-            ->get(['id', 'libelle']);
+            ->get(['id', 'libelle', 'unite']);
 
         // Uniquement calculée pour un employé rattaché à un magasin ; la vue admin
         // affiche l'équivalent par boutique via sa propre boucle @foreach(Store::all()).

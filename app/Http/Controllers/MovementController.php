@@ -20,6 +20,9 @@ class MovementController extends Controller
     public function __construct()
     {
         $this->middleware('auth.check');
+        // Ancienne page hors menu : ventes, achats et dépenses de tous les magasins.
+        // Réservée à la vue globale (un employé rattaché verrait les autres magasins).
+        $this->middleware('permission:stores.all');
     }
 
     /**

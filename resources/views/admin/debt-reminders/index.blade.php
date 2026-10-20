@@ -48,7 +48,8 @@
                                             );
                                         @endphp
                                         <tr>
-                                            <td><strong>{{ $r->customer?->customerName ?? 'N/A' }}</strong>
+                                            <td><strong>{{ $r->customer?->customerName ?? 'Client #'.$r->customer_id }}</strong>
+                                                @if ($r->customer?->trashed())<span class="badge bg-secondary ms-1">archivé</span>@endif
                                                 <small class="d-block text-muted">{{ $r->customer?->mark ?? '' }}</small>
                                             </td>
                                             <td>{{ $r->customer?->tel ?? 'N/A' }}</td>
@@ -66,7 +67,7 @@
                                                      qu'échouer, il est masqué. Le lien WhatsApp ci-dessus ne dépend
                                                      d'aucun fournisseur et reste disponible. --}}
                                                 @if(\App\Services\SmsService::fournisseurConfigure())
-                                                <form method="POST" action="{{ route('admin.debt-reminders.send-sms', $r->customer?->id) }}" class="d-inline"
+                                                <form method="POST" action="{{ route('admin.debt-reminders.send-sms', $r->customer_id) }}" class="d-inline"
                                                       onsubmit="return confirm('Envoyer un SMS de rappel à {{ $r->customer?->customerName }} ?');">
                                                     @csrf
                                                     <button type="submit" class="btn btn-sm" style="background:#3E4C21;color:#fff;">
@@ -77,7 +78,7 @@
                                                 @else
                                                 <span class="badge bg-secondary" title="Numéro invalide">Tél. invalide</span>
                                                 @endif
-                                                <form method="POST" action="{{ route('admin.debt-reminders.resolve', $r->customer?->id) }}" class="d-inline"
+                                                <form method="POST" action="{{ route('admin.debt-reminders.resolve', $r->customer_id) }}" class="d-inline"
                                                       onsubmit="return confirm('Marquer tous les rappels de ce client comme résolus ?');">
                                                     @csrf
                                                     <button type="submit" class="btn btn-sm btn-outline-secondary">Résolu</button>

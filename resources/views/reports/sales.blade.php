@@ -139,7 +139,7 @@
                     <div class="card bg-light border-0">
                         <div class="card-body">
                             <div class="text-muted">Total Quantité</div>
-                            <div class="h4 mb-0">{{ $totalQuantity }}</div>
+                            <div class="h5 mb-0">{{ \App\Models\Product::resumeQuantites($sales, 'quantity') }}</div>
                         </div>
                     </div>
                 </div>
@@ -181,8 +181,8 @@
                                 <td>{{ $sale->created_at }}</td>
                                 <td>{{ $sale->numeroFacture }}</td>
                                 <td>{{ $sale->store?->store_name }}</td>
-                                <td>{{ $sale->product?->libelle }}</td>
-                                <td>{{ $sale->quantity }}</td>
+                                <td>{{ $sale->product?->libelle }}@if ($sale->is_third_party) <span class="badge bg-light text-dark" style="border:1px solid #C7A150;font-size:11px;">Pris chez {{ $sale->partner?->name ?? 'un partenaire' }}</span>@endif</td>
+                                <td>{{ $sale->quantite_affichee }}</td>
                                 <td>{{ numberDelimiter($sale->prix) }} FG</td>
                                 <td>{{ numberDelimiter($sale->prixTotal) }} FG</td>
                                 <td>{{ numberDelimiter($sale->interet) }} FG</td>

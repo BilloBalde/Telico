@@ -92,6 +92,14 @@ class SalesReportController extends Controller
             ->select(DB::raw('sales.store_id, COUNT(DISTINCT sales.numeroFacture) as nb, SUM(sales.prixTotal) as ca, SUM(sales.quantity) as qty, SUM(sales.interet) as marge'))
             ->groupBy('sales.store_id')->get();
 
+        // Quantités par unité (cartons, pièces, rouleaux…) : on ne les
+        // additionne jamais entre unités différentes.
+        $qtyParUnite = (clone $lines)->reorder()
+            ->select(DB::raw("sales.user_id, sales.store_id, COALESCE(sales.unite, 'pcs') as unite, SUM(sales.quantity) as qty"))
+            ->groupBy('sales.user_id', 'sales.store_id', DB::raw("COALESCE(sales.unite, 'pcs')"))->get();
+        $qtyVendeur = $qtyParUnite->groupBy('user_id')->map(fn ($g) => \App\Models\Product::resumeQuantites($g));
+        $qtyStore = $qtyParUnite->groupBy('store_id')->map(fn ($g) => \App\Models\Product::resumeQuantites($g));
+
         $details = (clone $lines)
             ->with(['product:id,libelle', 'store:id,store_name,type', 'user:id,name'])
             ->orderByDesc('sales.created_at')
@@ -108,12 +116,175 @@ class SalesReportController extends Controller
             'nb'    => (int) $byVendeur->sum('nb'),
             'ca'    => (float) $byVendeur->sum('ca'),
             'qty'   => (int) $byVendeur->sum('qty'),
+            'qty_unites' => \App\Models\Product::resumeQuantites($qtyParUnite),
             'marge' => (float) $byVendeur->sum('marge'),
         ];
 
         return view('reports.flash', compact(
             'period', 'label', 'start', 'end', 'byVendeur', 'byStore', 'details', 'customers',
-            'userNames', 'stores', 'storeNames', 'vendeurs', 'products', 'totals'
+            'userNames', 'stores', 'storeNames', 'vendeurs', 'products', 'totals', 'qtyVendeur', 'qtyStore'
+        ));
+    }
+
+    /**
+     * Ventes tierces : produits pris chez un partenaire et revendus (dans une
+     * vente de caisse ou une vente tierce). Montre ce qui est dû à chaque
+     * partenaire, ce qui lui a été réglé et le solde.
+     */
+    public function tiers(Request $request)
+    {
+        return view('reports.tiers', $this->donneesTiers($request));
+    }
+
+    /** Rapport des ventes tierces en PDF (mêmes filtres que la page). */
+    public function tiersPdf(Request $request)
+    {
+        ini_set('memory_limit', '512M');
+        $donnees = $this->donneesTiers($request, true);
+
+        // Dompdf devient trop lent au-delà de quelques milliers de lignes :
+        // l'Excel n'a pas cette limite.
+        if ($donnees['details']->count() > 1500) {
+            return back()->with('error', sprintf(
+                'Cette période contient %d lignes de ventes tierces — trop pour un PDF. Réduisez la période ou utilisez l\'export Excel.',
+                $donnees['details']->count()
+            ));
+        }
+
+        $donnees['company'] = \App\Models\Company::current();
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.ventes-tierces-pdf', $donnees)
+            ->setPaper('a4', 'landscape')
+            ->setOptions(['defaultFont' => 'DejaVu Sans', 'isHtml5ParserEnabled' => true]);
+
+        return $pdf->download($this->nomFichierTiers($donnees) . '.pdf');
+    }
+
+    /** Rapport des ventes tierces en Excel : partenaires, détail, règlements. */
+    public function tiersExcel(Request $request)
+    {
+        $donnees = $this->donneesTiers($request, true);
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\VentesTiercesExport($donnees),
+            $this->nomFichierTiers($donnees) . '.xlsx'
+        );
+    }
+
+    private function nomFichierTiers(array $donnees): string
+    {
+        return 'ventes_tierces_' . $donnees['start']->format('Y-m-d') . '_au_' . $donnees['end']->format('Y-m-d');
+    }
+
+    /**
+     * Données du rapport des ventes tierces, communes à la page et aux
+     * exports. Pour un export, toutes les lignes (pas de pagination).
+     */
+    private function donneesTiers(Request $request, bool $export = false): array
+    {
+        $period = $request->input('period', 'monthly');
+        [$start, $end, $label] = $this->resolvePeriod($period, $request, Carbon::now());
+        $user = auth()->user();
+        $peutRegler = $user->hasPermission('partners.settle');
+
+        $lines = Sale::query()
+            ->join('factures', 'factures.numero_facture', '=', 'sales.numeroFacture')
+            ->whereNull('factures.deleted_at')
+            ->where('sales.is_third_party', true)
+            ->whereBetween('sales.created_at', [$start, $end])
+            ->when($user->isStoreScoped(), fn ($q) => $q->whereIn('sales.store_id', $user->accessibleStoreIds()))
+            ->when($request->filled('partner_id'), fn ($q) => $q->where('sales.partner_id', $request->input('partner_id')))
+            ->when($request->filled('store_id'), fn ($q) => $q->where('sales.store_id', $request->input('store_id')))
+            ->select('sales.*', 'factures.customer_id as facture_customer_id');
+
+        $details = (clone $lines)
+            ->with(['product:id,libelle,unite', 'store:id,store_name,type', 'user:id,name', 'partner:id,name,phone'])
+            ->orderByDesc('sales.created_at');
+        $details = $export ? $details->get() : $details->paginate(100)->appends($request->query());
+
+        // Par partenaire, sur la période : ventes, dû, marge, quantités par unité.
+        $parPartenaire = (clone $lines)->reorder()
+            ->select(DB::raw('sales.partner_id, COUNT(*) as nb, SUM(sales.prixTotal) as ca, SUM(sales.purchase_price_from_partner * sales.quantity) as du, SUM(sales.interet) as marge'))
+            ->groupBy('sales.partner_id')->get()->keyBy('partner_id');
+        $qtyParPartenaire = (clone $lines)->reorder()
+            ->select(DB::raw("sales.partner_id, COALESCE(sales.unite, 'pcs') as unite, SUM(sales.quantity) as qty"))
+            ->groupBy('sales.partner_id', DB::raw("COALESCE(sales.unite, 'pcs')"))->get()
+            ->groupBy('partner_id')->map(fn ($g) => \App\Models\Product::resumeQuantites($g));
+
+        // Soldes tous temps confondus (dû − réglé) : réservés à qui règle les partenaires.
+        $dus = $peutRegler ? \App\Models\Partner::montantsDus() : collect();
+        $regles = $peutRegler ? \App\Models\Partner::montantsRegles() : collect();
+        $partenaireIds = $parPartenaire->keys()->merge($dus->keys())->unique()->filter();
+        $partenaires = \App\Models\Partner::whereIn('id', $partenaireIds)->orderBy('name')->get()
+            ->map(fn ($p) => (object) [
+                'partner' => $p,
+                'periode' => $parPartenaire[$p->id] ?? null,
+                'qty'     => $qtyParPartenaire[$p->id] ?? '—',
+                'du'      => (float) ($dus[$p->id] ?? 0),
+                'regle'   => (float) ($regles[$p->id] ?? 0),
+                'solde'   => (float) ($dus[$p->id] ?? 0) - (float) ($regles[$p->id] ?? 0),
+            ])
+            ->when($request->filled('partner_id'), fn ($c) => $c->filter(fn ($r) => $r->partner->id === (int) $request->input('partner_id')))
+            ->values();
+
+        $totals = [
+            'ca'    => (float) $parPartenaire->sum('ca'),
+            'du'    => (float) $parPartenaire->sum('du'),
+            'marge' => (float) $parPartenaire->sum('marge'),
+            'solde' => (float) $partenaires->sum('solde'),
+        ];
+
+        $reglements = $peutRegler
+            ? \App\Models\PartnerSettlement::with(['partner:id,name', 'user:id,name'])
+                ->whereBetween('paid_at', [$start->toDateString(), $end->toDateString()])
+                ->when($request->filled('partner_id'), fn ($q) => $q->where('partner_id', $request->input('partner_id')))
+                ->latest('paid_at')->latest('id')->get()
+            : collect();
+
+        $customers = \App\Models\Customer::withTrashed()->whereIn('id', $details->pluck('facture_customer_id')->filter()->unique())->pluck('customerName', 'id');
+        $stores = Store::visibleTo($user)->orderBy('store_name')->get();
+        $tousPartenaires = \App\Models\Partner::orderBy('name')->get(['id', 'name', 'phone']);
+
+        return compact(
+            'period', 'label', 'start', 'end', 'details', 'partenaires', 'totals', 'reglements',
+            'customers', 'stores', 'tousPartenaires', 'peutRegler'
+        );
+    }
+
+    /** Règlement fait à un partenaire (espèces, Orange Money…). */
+    public function reglerPartenaire(Request $request)
+    {
+        $data = $request->validate([
+            'partner_id' => 'required|exists:partners,id',
+            'amount'     => 'required|numeric|min:1',
+            'paid_at'    => 'required|date|before_or_equal:today',
+            'mode'       => 'required|in:' . implode(',', array_keys(\App\Models\PartnerSettlement::MODES)),
+            'note'       => 'nullable|string|max:500',
+        ], [
+            'amount.min'              => 'Le montant doit être positif.',
+            'paid_at.before_or_equal' => 'La date du règlement ne peut pas être dans le futur.',
+        ]);
+
+        $partenaire = \App\Models\Partner::findOrFail($data['partner_id']);
+        $solde = (float) (\App\Models\Partner::montantsDus()[$partenaire->id] ?? 0)
+            - (float) (\App\Models\Partner::montantsRegles()[$partenaire->id] ?? 0);
+
+        // On ne règle pas plus que ce qui est dû : une erreur de saisie
+        // créerait une avance fictive chez le partenaire.
+        if ($data['amount'] > $solde + 0.01) {
+            return back()->withInput()->withErrors(['amount' => sprintf(
+                'Le montant dépasse ce qui reste dû à %s (%s FG).',
+                $partenaire->name,
+                number_format(max(0, $solde), 0, ',', ' ')
+            )]);
+        }
+
+        \App\Models\PartnerSettlement::create($data + ['user_id' => auth()->id()]);
+
+        return back()->with('success', sprintf(
+            'Règlement de %s FG à %s enregistré. Reste dû : %s FG.',
+            number_format($data['amount'], 0, ',', ' '),
+            $partenaire->name,
+            number_format(max(0, $solde - $data['amount']), 0, ',', ' ')
         ));
     }
 

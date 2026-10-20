@@ -17,12 +17,12 @@
         .header {
             text-align: center;
             margin-bottom: 30px;
-            border-bottom: 2px solid #4F81BD;
+            border-bottom: 2px solid #3E4C21;
             padding-bottom: 15px;
         }
         
         .header h1 {
-            color: #4F81BD;
+            color: #3E4C21;
             font-size: 24px;
             margin: 0 0 5px 0;
         }
@@ -84,12 +84,12 @@
             background: #f5f5f5;
             padding: 10px;
             margin-bottom: 20px;
-            border-left: 4px solid #4F81BD;
+            border-left: 4px solid #3E4C21;
             font-size: 11px;
         }
         
         .filter-info strong {
-            color: #4F81BD;
+            color: #3E4C21;
         }
         
         table {
@@ -100,12 +100,12 @@
         }
         
         th {
-            background: #4F81BD;
+            background: #3E4C21;
             color: white;
             font-weight: bold;
             padding: 10px 8px;
             text-align: center;
-            border: 1px solid #3A6A9E;
+            border: 1px solid #283114;
         }
         
         td {
@@ -128,16 +128,16 @@
         }
         
         tr:hover {
-            background: #f0f7ff;
+            background: #F9F9F3;
         }
         
         .total-row {
-            background: #E6F0FF !important;
+            background: #F4F5EC !important;
             font-weight: bold;
         }
         
         .total-row td {
-            border-top: 2px solid #4F81BD;
+            border-top: 2px solid #3E4C21;
         }
         
         .summary-box {
@@ -289,7 +289,7 @@
                 <th width="12%">N° Facture</th>
                 <th width="25%">Produit</th>
                 <th width="8%">Qté</th>
-                <th width="12%">Prix Unitaire</th>
+                <th width="12%">Prix par unité</th>
                 <th width="12%">Prix Total</th>
                 <th width="12%">Intérêt</th>
                 <th width="14%">Date</th>
@@ -302,8 +302,9 @@
                 <td>{{ $sale->numeroFacture }}</td>
                 <td class="product-info">
                     <span class="product-name">{{ $sale->produit }}</span>
+                    @if ($sale->is_third_party)<br><small style="color:#8A6A24;">Pris chez {{ $sale->partner?->name ?? 'un partenaire' }}</small>@endif
                 </td>
-                <td>{{ $sale->quantity }}</td>
+                <td>{{ $sale->quantite_affichee }}</td>
                 <td>{{ number_format($sale->prix, 0, ',', ' ') }} FG</td>
                 <td>{{ number_format($sale->prixTotal, 0, ',', ' ') }} FG</td>
                 <td>{{ number_format($sale->interet, 0, ',', ' ') }} FG</td>
@@ -335,14 +336,14 @@
 
     <!-- Summary Box -->
     <div class="summary-box">
-        <h4 style="margin-top: 0; color: #4F81BD;">RÉSUMÉ</h4>
+        <h4 style="margin-top: 0; color: #3E4C21;">RÉSUMÉ</h4>
         <div class="summary-row">
             <span class="summary-label">Nombre total de ventes:</span>
             <span class="summary-value">{{ $sales->count() }}</span>
         </div>
         <div class="summary-row">
             <span class="summary-label">Quantité totale vendue:</span>
-            <span class="summary-value">{{ $totalQuantity }} unités</span>
+            <span class="summary-value">{{ \App\Models\Product::resumeQuantites($sales, 'quantity') }}</span>
         </div>
         <div class="summary-row">
             <span class="summary-label">Chiffre d'affaires total:</span>

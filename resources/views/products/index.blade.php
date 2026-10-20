@@ -104,6 +104,7 @@
                                             <th>Qtité en Stock</th>
                                             <th>Prix Vente</th>
                                             <th>Prix Revient</th>
+                                            <th>Prix min.</th>
                                             <th>Image</th>
                                             <th>Action</th>
                                         </tr>
@@ -131,11 +132,12 @@
                                                         {{ $category->slug }}
                                                     @endforeach
                                                 </td>
-                                                <td>{{ $quantity }}</td>
+                                                <td>{{ $dataItem->quantiteAvecUnite($quantity) }}</td>
                                                 <td>{{ $dataItem->price }} FG</td>
                                                 <td>{{ $dataItem->price_sale ?? '-' }} FG</td>
+                                                <td>{{ $dataItem->price_sale_minimum !== null ? number_format((float) $dataItem->price_sale_minimum, 0, ',', ' ') . ' FG' : '—' }}</td>
                                                 <td>
-                                                    <img src="{{ asset('products/' . $dataItem->image) }}" alt="product" style="width: 150px; height: 100px;">
+                                                    <img src="{{ $dataItem->image_url }}" alt="product" style="width: 150px; height: 100px;">
                                                 </td>
                                                 <td>
                                                     <a class="me-3" href="{{ route('produits.edit', $dataItem->id) }}">

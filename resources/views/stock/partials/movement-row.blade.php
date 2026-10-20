@@ -8,7 +8,7 @@
         {{ $m->store?->store_name ?? 'Emplacement #'.$m->store_id }}
         @if ($m->fund_id)<small class="d-block text-muted">{{ \App\Models\Fund::labelFor($m->fund_id) }}</small>@endif
     </td>
-    <td class="text-end {{ $m->quantity < 0 ? 'text-danger' : 'text-success' }}">{{ $m->quantity > 0 ? '+' : '' }}{{ number_format($m->quantity, 0, ',', ' ') }}</td>
+    <td class="text-end {{ $m->quantity < 0 ? 'text-danger' : 'text-success' }}">{{ $m->quantity > 0 ? '+' : '−' }}{{ \App\Models\Product::quantiteEnUnite(abs($m->quantity), $m->unite ?: $m->product?->unite) }}</td>
     <td class="text-end text-muted">{{ $m->stock_before }} → {{ $m->stock_after }}</td>
     <td>
         @if ($m->counterpartStore){{ $m->quantity < 0 ? 'Vers' : 'Depuis' }} {{ $m->counterpartStore->store_name }}<br>@endif

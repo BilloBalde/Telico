@@ -91,7 +91,7 @@
                                     <tr>
                                         <th>Date Transaction</th>
                                         <th>Montant</th>
-                                        <th>Balance du Jour</th>
+                                        <th>Reste à payer après versement</th>
                                         <th>Description</th>
                                         <th>Reçu</th>
                                     </tr>
@@ -101,11 +101,11 @@
                                     <tr>
                                         <td>{{ $item->created_at }}</td>
                                         <td>{{ $item->versement }}</td>
-                                        <td>{{ number_format($item->balance, 2) }} FG</td>
-                                        <td style="width: 100px; 
+                                        <td>{{ number_format($item->solde_apres, 0, ',', ' ') }} FG</td>
+                                        <td style="width: 100px;
                                                 min-width: 100px;
                                                 max-width: 100px;
-                                                word-break: break-word; 
+                                                word-break: break-word;
                                                 overflow-wrap: anywhere;
                                                 white-space: normal;
                                                 line-height: 1.3;">

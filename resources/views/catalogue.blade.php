@@ -179,6 +179,7 @@
             .catalogue-layout { grid-template-columns: 1fr !important; }
             .sidebar { position: static !important; }
         }
+            .prod-unite { font-size: .78rem; color: var(--ink-muted, #66695A); margin-left: -4px; }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -337,7 +338,7 @@
                         <button type="button" class="qty-btn" onclick="changeQty(this,1)" aria-label="Augmenter la quantité">+</button>
                     </div>
                     <div class="prod-price-row">
-                        <span class="prod-price" data-computed-price>${Number(p.price).toLocaleString('fr-FR')} GNF</span>
+                        <span class="prod-price" data-computed-price>${Number(p.price).toLocaleString('fr-FR')} GNF</span><span class="prod-unite">/ ${p.unite || 'pièce'}</span>
                         ${oldHTML}
                     </div>
                     <div class="prod-btns">

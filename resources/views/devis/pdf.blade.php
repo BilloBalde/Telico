@@ -43,7 +43,7 @@
         }
         
         .btn-added {
-            background-color: #ff9f43;
+            background-color: #3E4C21;
             color: white;
         }
         
@@ -85,7 +85,7 @@
             background: #f5f5f5;
             padding: 15px;
             margin-bottom: 25px;
-            border-left: 4px solid #007bff;
+            border-left: 4px solid #C7A150;
             font-size: 16px;
         }
         
@@ -432,7 +432,7 @@
                                     <tr>
                                         <td>{{ $loop->iteration }}</td>
                                         <td style="text-align: left;">{{ $item->product->libelle ?? 'Produit supprimé' }}</td>
-                                        <td>{{ $item->quantity }}</td>
+                                        <td>{{ $item->quantite_affichee }}</td>
                                         <td>{{ number_format($item->unit_price, 0, ',', ' ') }} FG</td>
                                         <td>{{ number_format($item->total_price, 0, ',', ' ') }} FG</td>
                                     </tr>
@@ -456,7 +456,7 @@
 
                             <!-- Notes -->
                             @if($devis->notes)
-                            <div style="margin: 20px 0; padding: 10px; background: #f9f9f9; border-left: 4px solid #007bff;">
+                            <div style="margin: 20px 0; padding: 10px; background: #f9f9f9; border-left: 4px solid #C7A150;">
                                 <strong>Notes:</strong><br>
                                 {{ $devis->notes }}
                             </div>

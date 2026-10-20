@@ -58,7 +58,7 @@
                                             <td>{{ $item->tel }}</td>
                                             <td>{{ $item->email }}</td>
                                             <td>{{ $item->address }}</td>
-                                            <td>{{ $item->balance }} FG</td>
+                                            <td>{{ auth()->user()->isStoreScoped() ? (float) $item->balance_perimetre : $item->balance }} FG</td>
                                             <td>
                                                 <a href="{{ route('customers.edit', $item->id) }}" class="btn btn-warning btn-sm me-2"><i class="fas fa-edit"></i> Modifier</a >
                                                 <button type="button" 

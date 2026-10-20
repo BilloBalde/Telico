@@ -13,81 +13,107 @@ class Product extends Model
     protected $casts = [
         'promo_start_date' => 'date',
         'promo_end_date' => 'date',
-        'unites_vente' => 'array',
     ];
 
     /**
-     * Unités dans lesquelles un produit peut se vendre. Le stock est compté
-     * dans l'unité de base : la pièce, ou le rouleau pour un produit vendu au
-     * rouleau (un rouleau ne se combine donc pas avec les autres unités).
+     * Unité unique du produit, choisie à la création : le stock, les achats,
+     * les ventes et les factures sont tous comptés dans cette unité.
      */
     public const UNITES = [
-        'pcs'      => ['libelle' => 'Pièce',    'pluriel' => 'pièces'],
-        'douzaine' => ['libelle' => 'Douzaine', 'pluriel' => 'douzaines'],
-        'carton'   => ['libelle' => 'Carton',   'pluriel' => 'cartons'],
-        'paquet'   => ['libelle' => 'Paquet',   'pluriel' => 'paquets'],
-        'rouleau'  => ['libelle' => 'Rouleau',  'pluriel' => 'rouleaux'],
+        'pcs'      => ['libelle' => 'Pièce',    'pluriel' => 'pièces',    'court' => 'pcs'],
+        'douzaine' => ['libelle' => 'Douzaine', 'pluriel' => 'douzaines', 'court' => 'douz.'],
+        'carton'   => ['libelle' => 'Carton',   'pluriel' => 'cartons',   'court' => 'ctn'],
+        'paquet'   => ['libelle' => 'Paquet',   'pluriel' => 'paquets',   'court' => 'paq.'],
+        'rouleau'  => ['libelle' => 'Rouleau',  'pluriel' => 'rouleaux',  'court' => 'rlx'],
     ];
 
-    /** Codes d'unité activés, dans l'ordre de UNITES ; « pcs » par défaut. */
-    public function codesUnites(): array
+    public function getUniteAttribute($valeur): string
     {
-        $codes = array_values(array_intersect(array_keys(self::UNITES), (array) ($this->unites_vente ?: [])));
-
-        return $codes ?: ['pcs'];
+        return isset(self::UNITES[$valeur]) ? $valeur : 'pcs';
     }
 
-    /**
-     * Nombre d'unités de base contenues dans une unité de vente, ou null si
-     * l'unité n'est pas proposée pour ce produit (ou mal renseignée).
-     */
-    public function facteurUnite(string $code): ?int
+    /** Contenu d'une unité : « 12 pcs », « 24 pcs », « 100 m », ou null. */
+    public function contenanceUnite(): ?string
     {
-        if (! in_array($code, $this->codesUnites(), true)) {
-            return null;
-        }
-
-        return match ($code) {
-            'pcs', 'rouleau' => 1,
-            'douzaine'       => 12,
-            'carton'         => $this->pcs_par_carton ? (int) $this->pcs_par_carton : null,
-            'paquet'         => $this->pcs_par_paquet ? (int) $this->pcs_par_paquet : null,
-            default          => null,
+        return match ($this->unite) {
+            'douzaine' => '12 pcs',
+            'carton'   => $this->pcs_par_carton ? $this->pcs_par_carton.' pcs' : null,
+            'paquet'   => $this->pcs_par_paquet ? $this->pcs_par_paquet.' pcs' : null,
+            'rouleau'  => $this->dimension_rouleau ?: null,
+            default    => null,
         };
     }
 
-    /** Unité de base du stock : « rouleau » pour un produit vendu au rouleau. */
-    public function uniteDeBase(): string
+    /** « Carton (24 pcs) », « Rouleau (100 m) », « Pièce ». */
+    public function getUniteLibelleAttribute(): string
     {
-        return $this->codesUnites() === ['rouleau'] ? 'rouleau' : 'pcs';
+        $contenance = $this->contenanceUnite();
+
+        return self::UNITES[$this->unite]['libelle'].($contenance ? ' ('.$contenance.')' : '');
+    }
+
+    /** Nom de l'unité en minuscules, accordé : « carton » / « cartons ». */
+    public static function motUnite(?string $code, float|int $quantite = 1): string
+    {
+        $unite = self::UNITES[$code] ?? self::UNITES['pcs'];
+
+        return abs($quantite) > 1 ? $unite['pluriel'] : mb_strtolower($unite['libelle']);
+    }
+
+    /** « 3 cartons », « 1 rouleau », « 12 pièces ». */
+    public static function quantiteEnUnite(float|int|null $quantite, ?string $code): string
+    {
+        $quantite = (float) $quantite;
+
+        return number_format($quantite, 0, ',', ' ').' '.self::motUnite($code, $quantite);
     }
 
     /**
-     * Unités proposées à la vente : code => libellé détaillé, facteur.
-     * Ex. « Carton (24 pcs) », « Rouleau (50 m) ».
+     * Total de plusieurs produits, sans additionner des unités différentes :
+     * [unité => quantité] devient « 12 cartons · 30 pièces · 2 rouleaux ».
+     * Accepte aussi une liste de lignes ayant `unite` et une quantité.
      */
-    public function unitesDisponibles(): array
+    public static function resumeQuantites(iterable $lignes, string $champ = 'qty'): string
     {
-        $unites = [];
-        foreach ($this->codesUnites() as $code) {
-            $facteur = $this->facteurUnite($code);
-            if (! $facteur) {
-                continue;
-            }
-            $detail = match ($code) {
-                'douzaine' => '12 pcs',
-                'carton', 'paquet' => $facteur.' pcs',
-                'rouleau' => $this->dimension_rouleau,
-                default => null,
-            };
-            $unites[$code] = [
-                'code'    => $code,
-                'libelle' => self::UNITES[$code]['libelle'].($detail ? ' ('.$detail.')' : ''),
-                'facteur' => $facteur,
-            ];
+        $parUnite = [];
+        foreach ($lignes as $cle => $ligne) {
+            [$unite, $quantite] = is_scalar($ligne)
+                ? [$cle, $ligne]
+                : [data_get($ligne, 'unite'), data_get($ligne, $champ)];
+            $unite = isset(self::UNITES[$unite]) ? $unite : 'pcs';
+            $parUnite[$unite] = ($parUnite[$unite] ?? 0) + (float) $quantite;
         }
 
-        return $unites ?: ['pcs' => ['code' => 'pcs', 'libelle' => 'Pièce', 'facteur' => 1]];
+        $morceaux = [];
+        foreach (array_keys(self::UNITES) as $unite) {
+            if (! empty($parUnite[$unite])) {
+                $morceaux[] = self::quantiteEnUnite($parUnite[$unite], $unite);
+            }
+        }
+
+        return $morceaux ? implode(' · ', $morceaux) : '0';
+    }
+
+    /**
+     * Stock total par unité, éventuellement limité à des emplacements :
+     * « 1 675 pièces · 40 cartons · 25 douzaines ».
+     */
+    public static function resumeStock(iterable|null $storeIds = null): string
+    {
+        $lignes = \Illuminate\Support\Facades\DB::table('store_products')
+            ->join('products', 'products.id', '=', 'store_products.product_id')
+            ->when($storeIds !== null, fn ($q) => $q->whereIn('store_products.store_id', collect($storeIds)->all()))
+            ->selectRaw("COALESCE(products.unite, 'pcs') as unite, SUM(store_products.quantity) as qty")
+            ->groupBy(\Illuminate\Support\Facades\DB::raw("COALESCE(products.unite, 'pcs')"))
+            ->get();
+
+        return self::resumeQuantites($lignes);
+    }
+
+    /** Quantité de CE produit dans son unité : « 3 cartons ». */
+    public function quantiteAvecUnite(float|int|null $quantite): string
+    {
+        return self::quantiteEnUnite($quantite, $this->unite);
     }
 
     /**
@@ -117,6 +143,25 @@ class Product extends Model
     public function getEffectivePromoPriceAttribute(): ?float
     {
         return $this->isPromoActive() ? (float) $this->promo_price : null;
+    }
+
+    /** Image neutre affichée pour un produit sans photo (ou photo introuvable). */
+    public const IMAGE_PAR_DEFAUT = 'assets/img/produit-sans-photo.svg';
+
+    /**
+     * URL de la photo du produit, ou de l'image neutre : les produits créés
+     * sans photo (fiche, caisse, achat) n'affichent plus d'image cassée.
+     */
+    public static function urlImage(?string $image): string
+    {
+        return $image && is_file(public_path('products/' . $image))
+            ? asset('products/' . $image)
+            : asset(self::IMAGE_PAR_DEFAUT);
+    }
+
+    public function getImageUrlAttribute(): string
+    {
+        return self::urlImage($this->image);
     }
 
     public function categories()
@@ -178,6 +223,42 @@ class Product extends Model
         $cout = $this->coutUnitaire();
 
         return $cout > 0 ? ($prixUnitaire - $cout) * $quantite : 0.0;
+    }
+
+    /**
+     * Prix plancher de vente par unité : le plus haut du prix de vente minimum
+     * fixé par le gérant et du prix de revient. Règle unique pour la caisse, la
+     * facturation et les devis. $cout : coût du propriétaire de la marchandise
+     * (fonds d'un associé), sinon le prix de revient du produit.
+     *
+     * @return array{0: float, 1: string} [plancher, 'minimum' | 'revient'] ; 0 si rien n'est connu.
+     */
+    public function plancherDeVente(?float $cout = null): array
+    {
+        $cout = $cout ?? $this->coutUnitaire();
+        $minimum = (float) ($this->price_sale_minimum ?? 0);
+
+        return $minimum > 0 && $minimum >= $cout ? [$minimum, 'minimum'] : [max(0.0, (float) $cout), 'revient'];
+    }
+
+    /**
+     * Refuse un prix unitaire sous le plancher de vente (message pour le vendeur).
+     *
+     * @throws \RuntimeException
+     */
+    public function verifierPrixDeVente(float $prix, ?float $cout = null): void
+    {
+        [$plancher, $origine] = $this->plancherDeVente($cout);
+        if ($plancher <= 0 || $prix >= $plancher) {
+            return;
+        }
+
+        $fg = fn ($n) => number_format((float) $n, 0, ',', ' ');
+        throw new \RuntimeException($origine === 'minimum'
+            ? sprintf('Prix refusé pour « %s » : %s GNF par %s est sous le prix de vente minimum (%s GNF) fixé sur la fiche produit.',
+                $this->libelle, $fg($prix), self::motUnite($this->unite), $fg($plancher))
+            : sprintf('Vente à perte refusée pour « %s » : le prix de vente (%s GNF) est inférieur au prix de revient (%s GNF).',
+                $this->libelle, $fg($prix), $fg($plancher)));
     }
 
     public function latestLigneCommande()

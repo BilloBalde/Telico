@@ -104,8 +104,8 @@
                                             @foreach($order->items as $item)
                                             <tr>
                                                 <td>{{ $item->product?->libelle ?? 'Produit #'.$item->product_id }}</td>
-                                                <td>{{ $item->quantity }}</td>
-                                                <td>{{ number_format($item->price, 0, ',', ' ') }} GNF</td>
+                                                <td>{{ $item->quantite_affichee }}</td>
+                                                <td>{{ number_format($item->price, 0, ',', ' ') }} GNF <small class="text-muted">/ {{ $item->mot_unite }}</small></td>
                                                 <td class="font-weight-bold">{{ number_format($item->quantity * $item->price, 0, ',', ' ') }} GNF</td>
                                             </tr>
                                             @endforeach

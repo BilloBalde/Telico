@@ -114,7 +114,7 @@
         .invoice-head-period {
             font-size: 10px;
             font-weight: 700;
-            color: #4a5a52;
+            color: #66695A;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-top: 3px;
@@ -208,7 +208,7 @@
         }
 
         .summary-card.tone-1 { background-color: #3E4C21; } /* Ventes */
-        .summary-card.tone-2 { background-color: #2a8050; } /* Paiements encaissés */
+        .summary-card.tone-2 { background-color: #6B7A35; } /* Paiements encaissés */
         .summary-card.tone-3 { background-color: #d92d20; } /* Non payé — attention */
         .summary-card.tone-4 { background-color: #283114; } /* Achats */
         .summary-card.tone-5 { background-color: #66695A; } /* Dépenses */

@@ -4,6 +4,13 @@
 <head>
     <link rel="stylesheet" href="{{ asset('assets/css/receipt-invoice-style.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/invoice-details.css') }}">
+    <style>
+        /* Mentions internes (produit pris chez un partenaire) : à l'écran pour
+           le personnel, jamais sur le reçu imprimé ni sur le PDF remis au client. */
+        .mention-interne { display: block; color: #8A6A24; font-size: 11px; }
+        .pdf-mode .mention-interne { display: none !important; }
+        @media print { .mention-interne { display: none !important; } }
+    </style>
 </head>
 <body>
     <div class="main-wrapper">
@@ -133,6 +140,31 @@
                                 </div>
                             @endif
 
+                            @if($lignes->isNotEmpty())
+                                <!-- Articles de la facture, dans l'unité de chaque produit -->
+                                <table class="invoice-table">
+                                    <thead>
+                                        <tr>
+                                            <th>N°</th>
+                                            <th>ARTICLE DE LA FACTURE</th>
+                                            <th>QUANTITÉ</th>
+                                            <th>PRIX PAR UNITÉ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($lignes as $ligne)
+                                        <tr>
+                                            <td>{{ $loop->iteration }}</td>
+                                            <td>{{ $ligne->produit ?? 'Produit #'.$ligne->product_id }}
+                                                @if ($ligne->is_third_party)<small class="mention-interne" data-html2canvas-ignore="true"><i class="fa fa-handshake"></i> Pris chez {{ $ligne->partner?->name ?? 'un partenaire' }} — payé {{ number_format($ligne->purchase_price_from_partner, 0, '.', ' ') }} FG / {{ $ligne->mot_unite }}</small>@endif</td>
+                                            <td>{{ $ligne->quantite_affichee }}</td>
+                                            <td>{{ number_format($ligne->prix, 0, '.', ' ') }} FG / {{ $ligne->mot_unite }}</td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            @endif
+
                             <!-- Montant en lettres comme dans l'image -->
                             <div class="amount-in-words">
                                 <strong>Montant en lettres:</strong><br>
@@ -233,6 +265,8 @@
                 const clonedElement = element.cloneNode(true);
                 clonedElement.id = 'receiptContentClone';
                 clonedElement.classList.add('pdf-mode');
+                // Reçu remis au client : aucune mention interne dans le PDF.
+                clonedElement.querySelectorAll('.mention-interne').forEach(m => m.remove());
                 clonedElement.style.position = 'relative';
                 clonedElement.style.margin = '0 auto';
                 clonedElement.style.padding = '0';
@@ -267,7 +301,31 @@
                 
                 // Attendre que le clone soit rendu
                 setTimeout(function() {
-                    // Configuration PDF pour une seule page A4 - Tout sur une page
+                    // Une page A4 (marges de 8 mm) contient un contenu dont la hauteur
+                    // vaut au plus 281/194 de sa largeur. Avec la liste des articles,
+                    // un reçu peut dépasser : légèrement → on élargit la mise en page
+                    // pour qu'il tienne sur une page (un peu plus petit) ; beaucoup →
+                    // le PDF prend plusieurs pages. Plus rien n'est coupé.
+                    const capacite = 281 / 194;
+                    let largeurMm = 190;
+                    let unePage = true;
+                    for (let essai = 0; essai < 4; essai++) {
+                        const ratio = clonedElement.scrollHeight / clonedElement.scrollWidth;
+                        if (ratio <= capacite) break;
+                        const nouvelle = largeurMm * (ratio / capacite) * 1.02;
+                        if (nouvelle > 190 * 1.3) { unePage = false; break; }
+                        largeurMm = nouvelle;
+                        pdfContainer.style.width = pdfContainer.style.maxWidth = (largeurMm + 20) + 'mm';
+                        clonedElement.style.width = clonedElement.style.maxWidth = largeurMm + 'mm';
+                    }
+                    if (!unePage) {
+                        largeurMm = 190;
+                        pdfContainer.style.width = pdfContainer.style.maxWidth = '210mm';
+                        clonedElement.style.width = '100%';
+                        clonedElement.style.maxWidth = '190mm';
+                    }
+
+                    // Configuration PDF : une page A4 si possible, sinon plusieurs
                     const opt = {
                         margin: [8, 8, 8, 8], // Marges réduites pour tenir sur une page
                         filename: filename,
@@ -294,9 +352,13 @@
                             orientation: 'portrait',
                             compress: true
                         },
-                        pagebreak: { 
+                        pagebreak: unePage ? {
                             mode: ['avoid-all'],
                             avoid: '.receipt-invoice-wrapper, .invoice-title, .invoice-number-section, .client-info-box, .invoice-table, .amount-in-words, .signature-section, .company-info'
+                        } : {
+                            // Reçu long : coupure entre les lignes, jamais au milieu d'une ligne.
+                            mode: ['css', 'legacy'],
+                            avoid: ['tr', '.amount-in-words', '.signature-section', '.company-info']
                         }
                     };
                     
@@ -306,11 +368,15 @@
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Génération...';
                     btn.disabled = true;
                     
-                    // Générer le PDF depuis le clone isolé (forcer une page)
+                    // Générer le PDF depuis le clone isolé
                     html2pdf().set(opt).from(clonedElement).toPdf().get('pdf').then(function(pdf) {
-                        const totalPages = pdf.internal.getNumberOfPages();
-                        for (let i = totalPages; i > 1; i--) {
-                            pdf.deletePage(i);
+                        // Pages en trop supprimées seulement quand le reçu tient sur
+                        // une page (page blanche finale) : sinon, on garderait un reçu tronqué.
+                        if (unePage) {
+                            const totalPages = pdf.internal.getNumberOfPages();
+                            for (let i = totalPages; i > 1; i--) {
+                                pdf.deletePage(i);
+                            }
                         }
                         pdf.save(filename);
                         btn.innerHTML = originalText;

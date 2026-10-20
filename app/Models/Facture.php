@@ -121,6 +121,18 @@ class Facture extends Model
     }
 
     /**
+     * Quantités de la facture par unité (« 5 pièces · 2 cartons ») : la
+     * colonne `quantity` additionne des unités différentes. Charger `sales`
+     * avec la liste pour éviter une requête par facture.
+     */
+    public function getQuantiteResumeeAttribute(): string
+    {
+        return $this->sales->isNotEmpty()
+            ? Product::resumeQuantites($this->sales, 'quantity')
+            : number_format((float) $this->quantity, 0, ',', ' ');
+    }
+
+    /**
      * ============================================
      * RELATION AVEC LA COMMANDE (ORDER) - AJOUT
      * ============================================

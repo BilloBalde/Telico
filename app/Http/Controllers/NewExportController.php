@@ -42,6 +42,8 @@ class NewExportController extends Controller
                     'SKU' => $product->sku,
                     'Catégories' => $categories,
                     'Quantité' => $quantity,
+                    // Unité unique du produit : stock et prix sont dans cette unité.
+                    'Unité' => $product->unite_libelle,
                     'Prix' => $product->price ?? 0,
                     'Date' => $product->updated_at ? $product->updated_at->format('d/m/Y') : '',
                 ];
@@ -66,7 +68,7 @@ class NewExportController extends Controller
                     
                     public function headings(): array
                     {
-                        return ['Nom', 'SKU', 'Catégories', 'Quantité', 'Prix (F)', 'Date'];
+                        return ['Nom', 'SKU', 'Catégories', 'Quantité', 'Unité', 'Prix par unité (F)', 'Date'];
                     }
                     
                     public function title(): string
@@ -180,7 +182,7 @@ class NewExportController extends Controller
                 fprintf($handle, chr(0xEF).chr(0xBB).chr(0xBF));
                 
                 // En-têtes CSV
-                fputcsv($handle, ['Nom', 'SKU', 'Catégories', 'Stock', 'Prix (F)', 'Date']);
+                fputcsv($handle, ['Nom', 'SKU', 'Catégories', 'Stock', 'Unité', 'Prix par unité (F)', 'Date']);
                 
                 // Traiter par lots
                 Product::with('categories', 'stores')
@@ -194,6 +196,7 @@ class NewExportController extends Controller
                                 $product->sku,
                                 $categories,
                                 $quantity,
+                                $product->unite_libelle,
                                 $product->price ?? 0,
                                 $product->updated_at ? $product->updated_at->format('d/m/Y') : '',
                             ]);
@@ -280,8 +283,8 @@ class NewExportController extends Controller
                         <td>' . htmlspecialchars($product->libelle) . '</td>
                         <td>' . htmlspecialchars($product->sku ?? 'N/A') . '</td>
                         <td>' . htmlspecialchars($categories) . '</td>
-                        <td>' . $quantity . '</td>
-                        <td>' . number_format($product->price ?? 0, 0, ',', ' ') . ' F</td>';
+                        <td>' . htmlspecialchars($product->quantiteAvecUnite($quantity)) . '</td>
+                        <td>' . number_format($product->price ?? 0, 0, ',', ' ') . ' F / ' . htmlspecialchars(Product::motUnite($product->unite)) . '</td>';
             
             if ($includeImages && $product->image) {
                 $imagePath = public_path('products/' . $product->image);

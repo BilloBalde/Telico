@@ -81,14 +81,14 @@ class DailyReportController extends Controller
         return [$start, $end, $label];
     }
 
-    
+
 
     public function exportPDF(Request $request)
     {
         $data = $this->getReportData($request);
         $pdf = PDF::loadView('reports.daily-pdf', $data);
         $filename = 'daily-report-' . str_replace([' ', '→'], ['-', 'to'], $data['label']) . '.pdf';
-        
+
         return $pdf->download($filename);
     }
 
@@ -189,15 +189,16 @@ class DailyReportController extends Controller
 
         $totalEncaisse = (float) $paymentsQuery->sum('payments.versement');
 
-        // Expenses are linked by user_id; we map to stores via stores.user_id
+        // Chaque dépense porte son magasin (expenses.store_id). L'ancien calcul
+        // passait par stores.user_id : une dépense saisie par le patron, qui
+        // possède plusieurs magasins, était comptée une fois par magasin.
         $expensesQuery = Expense::query()
-            ->whereBetween('expenses.created_at', [$start, $end])
-            ->join('stores', 'stores.user_id', '=', 'expenses.user_id');
+            ->whereBetween('expenses.created_at', [$start, $end]);
 
         if (!empty($storeId)) {
-            $expensesQuery->where('stores.id', $storeId);
+            $expensesQuery->where('expenses.store_id', $storeId);
         } else {
-            $expensesQuery->whereIn('stores.id', $stores->pluck('id')->all());
+            $expensesQuery->whereIn('expenses.store_id', $stores->pluck('id')->all());
         }
 
         $totalDepenses = (float) $expensesQuery->sum('expenses.amount');
@@ -238,26 +239,24 @@ class DailyReportController extends Controller
 
         $expensesByStore = Expense::query()
             ->whereBetween('expenses.created_at', [$start, $end])
-            ->join('stores', 'stores.user_id', '=', 'expenses.user_id')
-            ->whereIn('stores.id', $storeIds)
+            ->whereIn('expenses.store_id', $storeIds)
             ->select([
-                'stores.id as store_id',
+                'expenses.store_id as store_id',
                 DB::raw('COALESCE(SUM(expenses.amount),0) as total_depenses'),
             ])
-            ->groupBy('stores.id')
+            ->groupBy('expenses.store_id')
             ->get()
             ->keyBy('store_id');
 
         // Daily expenses summary (grouped by day)
         // --- Daily expenses summary (grouped by day) ---
         $dailyExpensesQuery = Expense::query()
-        ->whereBetween('expenses.created_at', [$start, $end])
-        ->join('stores', 'stores.user_id', '=', 'expenses.user_id');
+            ->whereBetween('expenses.created_at', [$start, $end]);
 
         if (!empty($storeId)) {
-        $dailyExpensesQuery->where('stores.id', $storeId);
+            $dailyExpensesQuery->where('expenses.store_id', $storeId);
         } else {
-        $dailyExpensesQuery->whereIn('stores.id', $storeIds);
+            $dailyExpensesQuery->whereIn('expenses.store_id', $storeIds);
         }
 
         $dailyExpenses = $dailyExpensesQuery
@@ -325,6 +324,6 @@ class DailyReportController extends Controller
         ];
     }
 
-    
+
 }
 

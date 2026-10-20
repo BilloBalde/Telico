@@ -25,6 +25,7 @@ class StockServiceTest extends TestCase
         Schema::create('products', function ($table) {
             $table->id();
             $table->integer('pcs')->default(0);
+            $table->string('unite', 20)->default('pcs');
             $table->timestamps();
         });
 
@@ -44,6 +45,7 @@ class StockServiceTest extends TestCase
             $table->unsignedBigInteger('store_id');
             $table->string('type', 30);
             $table->integer('quantity');
+            $table->string('unite', 20)->nullable();
             $table->integer('stock_before')->nullable();
             $table->integer('stock_after')->nullable();
             $table->unsignedBigInteger('counterpart_store_id')->nullable();

@@ -142,7 +142,7 @@
                                                 </span>
                                             </td>
                                             <td>{{ $facture->store?->store_name ?? '—' }}</td>
-                                            <td>{{ $facture->quantity }}</td>
+                                            <td>{{ $facture->quantite_resumee }}</td>
                                             <td>{{ number_format($facture->montant_total, 0, ',', ' ') }} GNF</td>
                                             <td>{{ number_format($facture->avance, 0, ',', ' ') }} GNF</td>
                                             <td>{{ number_format($facture->reste, 0, ',', ' ') }} GNF</td>
@@ -222,11 +222,11 @@
                                 <div style="margin-bottom:12px;padding:12px;background:#f9fafb;border-radius:8px;border-left:3px solid #3E4C21;">
                                     <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
                                         <strong style="font-size:13px;">${item.product_name}</strong>
-                                        <span style="color:#9ca3af;font-size:12px;">Total commandé : ${item.quantity}</span>
+                                        <span style="color:#9ca3af;font-size:12px;">Total commandé : ${item.quantity} ${item.unite || ''}</span>
                                     </div>
                                     <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">
-                                        Déjà livré : <strong style="color:#10b981;">${alreadyDone}</strong>
-                                        &nbsp;|&nbsp; Reste à livrer : <strong style="color:#3E4C21;">${remaining}</strong>
+                                        Déjà livré : <strong style="color:#10b981;">${alreadyDone} ${item.unite || ''}</strong>
+                                        &nbsp;|&nbsp; Reste à livrer : <strong style="color:#3E4C21;">${remaining} ${item.unite || ''}</strong>
                                     </div>
                                     ${remaining > 0 ? `
                                     <div style="display:flex;align-items:center;gap:8px;">

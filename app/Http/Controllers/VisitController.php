@@ -89,6 +89,8 @@ class VisitController extends Controller
                 'discount'      => $isPromo ? round((1 - $p->promo_price / $p->price) * 100) : 0,
                 'rating'        => (float) ($p->rating ?? 4.5),
                 'image'         => $p->image ? asset('products/' . $p->image) : null,
+                // Prix et quantité dans l'unité unique du produit : « / carton ».
+                'unite'         => \App\Models\Product::motUnite($p->unite),
             ];
         };
 
@@ -102,6 +104,8 @@ class VisitController extends Controller
                 'discount'      => $p->promo_price ? round((1 - $p->promo_price / $p->price) * 100) : 0,
                 'rating'        => (float) ($p->rating ?? 4.5),
                 'image'         => $p->image ? asset('products/' . $p->image) : null,
+                // Prix et quantité dans l'unité unique du produit : « / carton ».
+                'unite'         => \App\Models\Product::motUnite($p->unite),
             ];
         };
 

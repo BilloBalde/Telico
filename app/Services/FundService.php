@@ -107,7 +107,7 @@ class FundService
             ->join('factures as f', 'f.numero_facture', '=', 's.numeroFacture')
             ->whereNull('f.deleted_at')
             ->where('s.fund_id', $fundId)
-            ->select('s.id', 's.numeroFacture', 's.product_id', 's.quantity', 's.prixTotal', 's.unit_cost', 's.created_at',
+            ->select('s.id', 's.numeroFacture', 's.product_id', 's.quantity', 's.unite', 's.prixTotal', 's.unit_cost', 's.created_at',
                 'f.montant_total', 'f.reste', 'f.customer_id')
             ->orderBy('s.id')
             ->get();

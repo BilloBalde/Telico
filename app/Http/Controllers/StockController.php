@@ -53,6 +53,20 @@ class StockController extends Controller
             ->selectRaw('store_products.store_id, SUM(store_products.quantity * COALESCE(products.price_sale, 0)) as cost')
             ->groupBy('store_products.store_id')->pluck('cost', 'store_id');
 
+        // Quantités en stock et vendues aujourd'hui, par unité : cartons et
+        // pièces ne s'additionnent pas.
+        $stockUnites = DB::table('store_products')
+            ->join('products', 'products.id', '=', 'store_products.product_id')
+            ->whereIn('store_products.store_id', $ids)
+            ->selectRaw("store_products.store_id, COALESCE(products.unite, 'pcs') as unite, SUM(store_products.quantity) as qty")
+            ->groupBy('store_products.store_id', DB::raw("COALESCE(products.unite, 'pcs')"))
+            ->get();
+        $ventesUnites = Sale::whereIn('store_id', $ids)
+            ->whereBetween('created_at', [$today, $today->copy()->endOfDay()])
+            ->selectRaw("store_id, COALESCE(unite, 'pcs') as unite, SUM(quantity) as qty")
+            ->groupBy('store_id', DB::raw("COALESCE(unite, 'pcs')"))
+            ->get();
+
         $salesToday = Sale::whereIn('store_id', $ids)
             ->whereBetween('created_at', [$today, $today->copy()->endOfDay()])
             ->selectRaw('store_id, SUM(prixTotal) as amount, SUM(quantity) as qty')
@@ -65,6 +79,8 @@ class StockController extends Controller
             'value'        => (float) ($value[$s->id] ?? 0),
             'sales_today'  => (float) ($salesToday[$s->id]->amount ?? 0),
             'qty_today'    => (int) ($salesToday[$s->id]->qty ?? 0),
+            'qty_unites'   => Product::resumeQuantites($stockUnites->where('store_id', $s->id)),
+            'ventes_unites'=> Product::resumeQuantites($ventesUnites->where('store_id', $s->id)),
         ]);
 
         $totals = [
@@ -74,6 +90,9 @@ class StockController extends Controller
             'sales_today'    => $rows->sum('sales_today'),
             'direct_today'   => $rows->filter(fn ($r) => $r->store->type === Store::TYPE_ENTREPOT)->sum('sales_today'),
             'value'          => $rows->sum('value'),
+            'stock_unites'          => Product::resumeQuantites($stockUnites),
+            'stock_magasins_unites' => Product::resumeQuantites($stockUnites->whereIn('store_id', $stores->where('type', '!=', Store::TYPE_ENTREPOT)->pluck('id'))),
+            'stock_entrepots_unites'=> Product::resumeQuantites($stockUnites->whereIn('store_id', $stores->where('type', Store::TYPE_ENTREPOT)->pluck('id'))),
         ];
 
         return view('stock.index', compact('rows', 'totals'));
@@ -86,7 +105,7 @@ class StockController extends Controller
         $store->load(['parent', 'children', 'users:id,name,store_id', 'manager:id,name']);
 
         $products = StoreProduct::where('store_id', $store->id)
-            ->with('product:id,libelle,sku,price,price_sale')
+            ->with('product:id,libelle,sku,price,price_sale,unite,pcs_par_carton,pcs_par_paquet,dimension_rouleau')
             ->when($request->filled('q'), fn ($q) => $q->whereHas('product', fn ($p) => $p
                 ->where('libelle', 'like', '%' . $request->input('q') . '%')
                 ->orWhere('sku', 'like', '%' . $request->input('q') . '%')))
@@ -100,10 +119,19 @@ class StockController extends Controller
             'Ce mois'        => [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()],
             'Cette année'    => [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()],
         ];
-        $sales = collect($periods)->map(fn ($range) => Sale::where('store_id', $store->id)
-            ->whereBetween('created_at', $range)
-            ->selectRaw('COALESCE(SUM(prixTotal),0) as amount, COALESCE(SUM(quantity),0) as qty, COALESCE(SUM(interet),0) as margin')
-            ->first());
+        $sales = collect($periods)->map(function ($range) use ($store) {
+            $s = Sale::where('store_id', $store->id)
+                ->whereBetween('created_at', $range)
+                ->selectRaw('COALESCE(SUM(prixTotal),0) as amount, COALESCE(SUM(quantity),0) as qty, COALESCE(SUM(interet),0) as margin')
+                ->first();
+            // Quantités vendues par unité (« 5 pièces · 2 cartons »).
+            $s->qty_unites = Product::resumeQuantites(Sale::where('store_id', $store->id)
+                ->whereBetween('created_at', $range)
+                ->selectRaw("COALESCE(unite, 'pcs') as unite, SUM(quantity) as qty")
+                ->groupBy(DB::raw("COALESCE(unite, 'pcs')"))->get());
+
+            return $s;
+        });
 
         $movements = StockMovement::where('store_id', $store->id)
             ->with(['product:id,libelle', 'user:id,name', 'counterpartStore:id,store_name'])
@@ -137,7 +165,7 @@ class StockController extends Controller
 
         $movements = $query->latest('id')->paginate(50)->appends($request->query());
         $stores = Store::optionsFor($user, false);
-        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku']);
+        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku', 'unite', 'pcs_par_carton', 'pcs_par_paquet', 'dimension_rouleau']);
         $users = User::whereIn('id', StockMovement::visibleTo($user)->distinct()->pluck('user_id')->filter())->orderBy('name')->get(['id', 'name']);
 
         return view('stock.movements', compact('movements', 'stores', 'products', 'users'));
@@ -150,7 +178,7 @@ class StockController extends Controller
     public function trace(Request $request)
     {
         $user = auth()->user();
-        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku']);
+        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku', 'unite', 'pcs_par_carton', 'pcs_par_paquet', 'dimension_rouleau']);
         $product = $request->filled('product_id') ? Product::find($request->input('product_id')) : null;
         $movements = collect();
         $balances = collect();
@@ -176,10 +204,15 @@ class StockController extends Controller
     public function adjustForm(Request $request)
     {
         $stores = Store::optionsFor(auth()->user());
-        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku']);
+        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku', 'unite', 'pcs_par_carton', 'pcs_par_paquet', 'dimension_rouleau']);
         $funds = \App\Models\Fund::active()->orderBy('name')->get();
+        // Stock enregistré par emplacement, produit et propriétaire : affiché
+        // pendant le comptage pour voir l'écart avant d'enregistrer.
+        $stockEnregistre = StoreProduct::whereIn('store_id', $stores->pluck('id'))
+            ->get(['store_id', 'product_id', 'fund_id', 'quantity'])
+            ->mapWithKeys(fn ($r) => [$r->store_id.'|'.$r->product_id.'|'.($r->fund_id ?? '') => (int) $r->quantity]);
 
-        return view('stock.adjust', compact('stores', 'products', 'funds'));
+        return view('stock.adjust', compact('stores', 'products', 'funds', 'stockEnregistre'));
     }
 
     /**
@@ -214,8 +247,16 @@ class StockController extends Controller
             'unit_price'  => $fundId ? app(\App\Services\FundService::class)->unitCost($fundId, (int) $data['product_id']) : null,
         ]));
 
+        // Quantités dans l'unité du produit : « 40 → 38 cartons (écart −2 cartons) ».
+        $produit = Product::find($data['product_id']);
+        $ecart = $data['counted'] - $before;
         $message = $movement
-            ? sprintf('Stock ajusté : %d → %d (écart %+d), tracé dans le journal.', $before, $data['counted'], $data['counted'] - $before)
+            ? sprintf('Stock ajusté pour « %s » : %s → %s (écart %s%s), tracé dans le journal.',
+                $produit->libelle,
+                number_format($before, 0, ',', ' '),
+                $produit->quantiteAvecUnite($data['counted']),
+                $ecart >= 0 ? '+' : '−',
+                $produit->quantiteAvecUnite(abs($ecart)))
             : 'Aucun écart : le stock compté correspond au stock enregistré.';
 
         return redirect()->route('stock.adjust.form')->with('success', $message);

@@ -103,7 +103,7 @@
                             <li class="py-3 flex justify-between gap-2 text-sm">
                                 <div>
                                     <span class="font-medium text-gray-900">{{ $product->libelle }}</span>
-                                    <span class="block text-xs text-gray-500">Qté {{ $qty }}</span>
+                                    <span class="block text-xs text-gray-500">Qté {{ $product->quantiteAvecUnite($qty) }}</span>
                                 </div>
                                 <span class="text-gray-800 whitespace-nowrap">{{ number_format($product->price * $qty, 0, ',', ' ') }} GNF</span>
                                 <input type="hidden" name="items[{{ $loop->index }}][product_id]" value="{{ $product->id }}">

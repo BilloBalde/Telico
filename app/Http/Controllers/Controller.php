@@ -31,6 +31,22 @@ class Controller extends BaseController
         return $user->forcedStoreId();
     }
 
+    /**
+     * 403 si un document (facture, devis, paiement…) appartient à un magasin
+     * hors du périmètre de l'utilisateur. Contrairement à authorizeStore(), une
+     * vue globale passe toujours, même pour un ancien document sans magasin.
+     */
+    protected function autoriserPerimetre($storeId, string $message = 'Ce document appartient à un autre magasin.'): void
+    {
+        $user = auth()->user();
+
+        abort_unless(
+            $user instanceof User && (! $user->isStoreScoped() || $user->canAccessStore($storeId)),
+            403,
+            $message
+        );
+    }
+
     /** 403 si l'emplacement est hors du périmètre de l'utilisateur connecté. */
     protected function authorizeStore($storeId): void
     {

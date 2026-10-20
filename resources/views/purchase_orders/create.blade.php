@@ -154,9 +154,9 @@
                                             <tr>
                                                 <th>Produit</th>
                                                 <th>Cartons</th>
-                                                <th>Pièces / carton</th>
+                                                <th>Unités / carton</th>
                                                 <th>Quantité</th>
-                                                <th class="po-price-label">Prix unitaire</th>
+                                                <th class="po-price-label">Prix par unité</th>
                                                 <th class="po-import-only">CBM / carton</th>
                                                 <th class="po-import-only">CBM / unité</th>
                                                 <th>Description</th>
@@ -226,7 +226,7 @@
                             <select name="lines[__INDEX__][product_id]" class="form-control" data-field="product_id" required>
                                 <option value="">Sélectionner le produit</option>
                                 @foreach($products as $product)
-                                    <option value="{{ $product->id }}">{{ $product->libelle }} ({{ $product->sku }})</option>
+                                    <option value="{{ $product->id }}" data-unite="{{ $product->unite }}" data-unite-pluriel="{{ \App\Models\Product::motUnite($product->unite, 2) }}">{{ $product->libelle }} ({{ $product->sku }}) — {{ $product->unite_libelle }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -239,13 +239,13 @@
                 </td>
                 <td><input type="number" min="0" name="lines[__INDEX__][cartons]" class="form-control" data-field="cartons" value="0"></td>
                 <td><input type="number" min="0" name="lines[__INDEX__][pieces_per_carton]" class="form-control" data-field="pieces_per_carton" value="0"></td>
-                <td><input type="number" min="1" name="lines[__INDEX__][quantity]" class="form-control" data-field="quantity" readonly required></td>
-                <td><input type="text" inputmode="decimal" name="lines[__INDEX__][unit_price_foreign]" class="form-control decimal-input" data-field="unit_price_foreign" required></td>
+                <td><input type="number" min="1" name="lines[__INDEX__][quantity]" class="form-control" data-field="quantity" readonly required><small class="text-muted" data-unite-hint></small></td>
+                <td><input type="text" inputmode="decimal" name="lines[__INDEX__][unit_price_foreign]" class="form-control decimal-input" data-field="unit_price_foreign" required><small class="text-muted" data-unite-prix></small></td>
                 <td class="po-import-only"><input type="text" inputmode="decimal" name="lines[__INDEX__][cbm_per_carton]" class="form-control decimal-input" data-field="cbm_per_carton" placeholder="Ex : 0.085"></td>
                 <td class="po-import-only"><input type="text" class="form-control" data-field="cbm_per_unit_display" readonly></td>
                 <td><input type="text" name="lines[__INDEX__][description]" class="form-control" data-field="description"></td>
                 {{-- Remplace l'ancien encadré .po-line-cost-preview : même donnée, en colonne --}}
-                <td data-preview><strong data-preview-cost>0</strong> GNF</td>
+                <td data-preview><strong data-preview-cost>0</strong> GNF <small class="text-muted" data-unite-prix></small></td>
                 <td><button type="button" class="btn btn-secondary" data-remove-line title="Retirer"><i class="fa fa-trash"></i></button></td>
             </tr>
         </template>
@@ -326,6 +326,7 @@
                             <label>SKU</label>
                             <input type="text" id="newProductSku" class="form-control">
                         </div>
+                        @include('purchase_orders.partials.new-product-unit')
                         <p class="text-muted" style="font-size:13px;">
                             Le prix de revient n'est pas demandé ici : il sera calculé automatiquement
                             (avec le prix de vente, +30%) une fois cet achat enregistré.
@@ -449,6 +450,10 @@
                         libelle: document.getElementById('newProductLibelle').value,
                         sku: document.getElementById('newProductSku').value,
                         category_id: document.getElementById('newProductCategory').value,
+                        unite: document.getElementById('newProductUnite').value,
+                        pcs_par_carton: document.getElementById('newProductPcsCarton').value,
+                        pcs_par_paquet: document.getElementById('newProductPcsPaquet').value,
+                        dimension_rouleau: document.getElementById('newProductDimension').value,
                     }).then(function (result) {
                         if (!result.ok || !result.data.success) {
                             const errors = result.data.errors
@@ -459,16 +464,23 @@
                         }
 
                         const product = result.data.product;
-                        const label = product.libelle + ' (' + product.sku + ')';
+                        const label = product.libelle + ' (' + product.sku + ') — ' + product.unite_libelle;
+                        // Option avec l'unité du produit, comme les options existantes.
+                        const nouvelleOption = function () {
+                            const opt = new Option(label, product.id);
+                            opt.dataset.unite = product.unite;
+                            opt.dataset.unitePluriel = product.unite_pluriel;
+                            return opt;
+                        };
 
                         // Ajoutée à toutes les lignes déjà affichées...
                         document.querySelectorAll('[data-field="product_id"]').forEach(function (select) {
-                            select.add(new Option(label, product.id));
+                            select.add(nouvelleOption());
                         });
                         // ...et au template, pour que les prochaines lignes ajoutées l'aient aussi.
                         template.content
                             ? template.content.querySelectorAll('[data-field="product_id"]').forEach(function (select) {
-                                select.add(new Option(label, product.id));
+                                select.add(nouvelleOption());
                             })
                             : null;
 
@@ -480,6 +492,9 @@
                         document.getElementById('newProductLibelle').value = '';
                         document.getElementById('newProductSku').value = '';
                         document.getElementById('newProductCategory').value = '';
+                        document.getElementById('newProductUnite').value = 'pcs';
+                        document.getElementById('newProductUnite').dispatchEvent(new Event('change'));
+                        ['newProductPcsCarton', 'newProductPcsPaquet', 'newProductDimension'].forEach(id => document.getElementById(id).value = '');
                         newProductModal.hide();
                     }).catch(function () {
                         showModalError('newProductError', 'Erreur réseau, réessayez.');
@@ -533,7 +548,7 @@
                         el.style.display = isChine ? '' : 'none';
                     });
                     document.querySelectorAll('.po-price-label').forEach(function (label) {
-                        label.textContent = isChine ? 'Prix unitaire (devise)' : 'Prix unitaire (GNF)';
+                        label.textContent = isChine ? 'Prix par unité (devise)' : 'Prix par unité (GNF)';
                     });
                     recompute();
                 }
@@ -637,10 +652,33 @@
                         width: '100%',
                         placeholder: 'Sélectionner le produit'
                     });
+                    $(lineEl).find('[data-field="product_id"]').on('change', function () { appliquerUnite(lineEl); });
+                    appliquerUnite(lineEl);
 
                     setOriginClass();
                 }
 
+
+                // Unité unique du produit : la quantité achetée (et entrée en stock)
+                // est dans cette unité. Un produit vendu au carton s'achète au
+                // carton : 1 « unité par carton », quantité = nombre de cartons.
+                function appliquerUnite(lineEl) {
+                    const opt = lineEl.querySelector('[data-field="product_id"]')?.selectedOptions[0];
+                    const unite = opt?.dataset.unite || 'pcs';
+                    const piecesField = lineEl.querySelector('[data-field="pieces_per_carton"]');
+                    const hint = lineEl.querySelector('[data-unite-hint]');
+                    if (hint) hint.textContent = opt?.value ? 'en ' + (opt.dataset.unitePluriel || 'pièces') : '';
+                    // Prix et coût de revient de la ligne : par unité du produit (« / carton »).
+                    const singulier = { pcs: 'pièce', douzaine: 'douzaine', carton: 'carton', paquet: 'paquet', rouleau: 'rouleau' }[unite];
+                    lineEl.querySelectorAll('[data-unite-prix]').forEach(el => el.textContent = opt?.value ? '/ ' + singulier : '');
+                    if (unite === 'carton') {
+                        piecesField.value = 1;
+                        piecesField.readOnly = true;
+                        piecesField.dispatchEvent(new Event('input'));
+                    } else {
+                        piecesField.readOnly = false;
+                    }
+                }
                 function recompute() {
                     const isChine = document.getElementById('originChine').checked;
                     const currencySelect = document.getElementById('currencyCode');

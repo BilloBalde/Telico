@@ -21,6 +21,8 @@ class PurchaseController extends Controller
         $this->middleware('permission:purchases.view')->only(['index', 'show']);
         $this->middleware('permission:purchases.create')->only(['create', 'store']);
         $this->middleware('permission:purchases.edit')->only(['edit', 'update']);
+        // Anciennes routes du flux d'achat simple : mêmes droits que la création.
+        $this->middleware('permission:purchases.create')->only(['ajout', 'exitAchat']);
         $this->middleware('permission:purchases.delete')->only(['destroy']);
     }
     /**

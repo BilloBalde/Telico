@@ -397,6 +397,11 @@ Route::get('/receipts/transfers/{transfer}', [ReceiptController::class, 'transfe
 
 Route::get('/reports/sales', [SalesReportController::class, 'index'])->name('reports.sales');
 Route::get('/reports/ventes-flash', [SalesReportController::class, 'flash'])->middleware(['auth.check', 'permission:reports.view'])->name('reports.flash');
+// Ventes tierces : produits pris chez un partenaire, dû et règlements aux partenaires.
+Route::get('/reports/ventes-tierces', [SalesReportController::class, 'tiers'])->middleware(['auth.check', 'permission:reports.view'])->name('reports.tiers');
+Route::get('/reports/ventes-tierces/export-pdf', [SalesReportController::class, 'tiersPdf'])->middleware(['auth.check', 'permission:reports.view'])->name('reports.tiers.pdf');
+Route::get('/reports/ventes-tierces/export-excel', [SalesReportController::class, 'tiersExcel'])->middleware(['auth.check', 'permission:reports.view'])->name('reports.tiers.excel');
+Route::post('/reports/ventes-tierces/reglements', [SalesReportController::class, 'reglerPartenaire'])->middleware(['auth.check', 'permission:partners.settle'])->name('reports.tiers.settle');
 Route::get('/reports/daily', [DailyReportController::class, 'index'])->name('reports.daily');
 Route::get('/reports/daily/export/pdf', [DailyReportController::class, 'exportPDF'])->name('reports.daily.export.pdf');
 
@@ -594,13 +599,13 @@ Route::get('/produits/download-export', function() {
 // Export Achats
 Route::get('/purchases/export-excel', function () {
     return Excel::download(new PurchasesExport, 'purchases.xlsx');
-})->middleware('auth.check')->name('purchases.export-excel');
+})->middleware(['auth.check', 'permission:purchases.view'])->name('purchases.export-excel');
 
 Route::get('/purchases/export-pdf', function () {
     $dataTable = \App\Models\Purchase::all();
     $pdf = Pdf::loadView('purchases.export', compact('dataTable'));
     return $pdf->download('purchases.pdf');
-})->middleware('auth.check')->name('purchases.export-pdf');
+})->middleware(['auth.check', 'permission:purchases.view'])->name('purchases.export-pdf');
 
 // =============================================
 // 31. NOUVELLES ROUTES D'EXPORT

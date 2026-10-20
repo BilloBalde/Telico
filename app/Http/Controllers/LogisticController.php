@@ -16,6 +16,8 @@ class LogisticController extends Controller
     public function __construct()
     {
         $this->middleware('auth.check');
+        // Frais de transport des achats (hors menu) : mêmes droits que les achats.
+        $this->middleware('permission:purchases.view');
     }
     /**
      * Display a listing of the resource.

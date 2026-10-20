@@ -23,7 +23,12 @@ class CustomerController extends Controller
      */
     public function index()
     {
-        $dataTable = Customer::all();
+        $user = auth()->user();
+        // Les clients sont communs à tous les magasins, mais un employé rattaché
+        // ne voit que le solde de SES factures (comme la page des débiteurs).
+        $dataTable = $user->isStoreScoped()
+            ? Customer::withSum(['factures as balance_perimetre' => fn ($q) => $q->whereIn('store_id', $user->accessibleStoreIds())], 'reste')->get()
+            : Customer::all();
         return view('customers.index', compact('dataTable'));
     }
 

@@ -28,6 +28,10 @@ class LocationPermissions
             'associates.manage' => 'Gérer les associés : fonds, apports, versements, relevés',
             'associates.self'   => 'Consulter son propre relevé d\'associé (lecture seule)',
         ],
+        'Partenaires' => [
+            // Ventes tierces : produits pris chez un partenaire et revendus.
+            'partners.settle' => 'Enregistrer les règlements aux partenaires (ventes tierces)',
+        ],
         'Transferts' => [
             'transfers.view'    => 'Voir les transferts',
             'transfers.create'  => 'Préparer / demander un transfert',
@@ -57,7 +61,7 @@ class LocationPermissions
             'stock.view', 'transfers.view',
         ],
         'comptable' => [
-            'stores.all', 'stock.view',
+            'stores.all', 'stock.view', 'partners.settle',
         ],
         'achat' => [
             'stores.all', 'stock.view', 'stock.movements', 'transfers.view', 'transfers.create',

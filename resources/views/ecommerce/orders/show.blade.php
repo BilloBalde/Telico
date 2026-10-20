@@ -134,13 +134,25 @@
                         Articles commandés
                     </h2>
                 </div>
-                <div class="overflow-x-auto">
+                {{-- Téléphone : une ligne par article, quantité et prix dans l'unité du produit. --}}
+                <ul class="sm:hidden divide-y divide-gray-100">
+                    @foreach($order->items as $item)
+                    <li class="px-5 py-4">
+                        <div class="flex justify-between gap-3">
+                            <span class="text-sm text-gray-900 font-medium">{{ $item->product->libelle ?? 'Produit #'.$item->product_id }}</span>
+                            <span class="text-sm text-gray-900 font-semibold whitespace-nowrap">{{ number_format($item->quantity * $item->price, 0, ',', ' ') }} GNF</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">{{ $item->quantite_affichee }} × {{ number_format($item->price, 0, ',', ' ') }} GNF / {{ $item->mot_unite }}</p>
+                    </li>
+                    @endforeach
+                </ul>
+                <div class="hidden sm:block overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-100">
                         <thead class="bg-gray-50">
                             <tr>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produit</th>
                                 <th class="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qté</th>
-                                <th class="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Prix unitaire</th>
+                                <th class="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Prix par unité</th>
                                 <th class="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                             </tr>
                         </thead>
@@ -150,8 +162,8 @@
                                 <td class="px-5 py-4 text-sm text-gray-900 font-medium">
                                     {{ $item->product->libelle ?? 'Produit #'.$item->product_id }}
                                 </td>
-                                <td class="px-5 py-4 text-sm text-gray-700 text-right">{{ $item->quantity }}</td>
-                                <td class="px-5 py-4 text-sm text-gray-700 text-right">{{ number_format($item->price, 0, ',', ' ') }} GNF</td>
+                                <td class="px-5 py-4 text-sm text-gray-700 text-right">{{ $item->quantite_affichee }}</td>
+                                <td class="px-5 py-4 text-sm text-gray-700 text-right">{{ number_format($item->price, 0, ',', ' ') }} GNF <span class="text-xs text-gray-400">/ {{ $item->mot_unite }}</span></td>
                                 <td class="px-5 py-4 text-sm text-gray-900 font-semibold text-right">{{ number_format($item->quantity * $item->price, 0, ',', ' ') }} GNF</td>
                             </tr>
                             @endforeach

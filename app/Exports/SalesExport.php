@@ -95,7 +95,7 @@ class SalesExport implements FromView, WithTitle, WithEvents, ShouldAutoSize
                     ],
                     'fill' => [
                         'fillType' => Fill::FILL_SOLID,
-                        'startColor' => ['rgb' => '4F81BD']
+                        'startColor' => ['rgb' => '3E4C21']
                     ],
                     'alignment' => [
                         'horizontal' => Alignment::HORIZONTAL_CENTER,
@@ -117,7 +117,7 @@ class SalesExport implements FromView, WithTitle, WithEvents, ShouldAutoSize
                     'borders' => [
                         'allBorders' => [
                             'borderStyle' => Border::BORDER_THIN,
-                            'color' => ['rgb' => 'CCCCCC']
+                            'color' => ['rgb' => 'E6E9D5']
                         ]
                     ],
                     'alignment' => [
@@ -134,7 +134,7 @@ class SalesExport implements FromView, WithTitle, WithEvents, ShouldAutoSize
                         ],
                         'fill' => [
                             'fillType' => Fill::FILL_SOLID,
-                            'startColor' => ['rgb' => 'E6F0FF']
+                            'startColor' => ['rgb' => 'F4F5EC']
                         ],
                         'borders' => [
                             'top' => [

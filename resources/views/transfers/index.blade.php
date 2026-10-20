@@ -202,7 +202,7 @@
                                             <td>{{ $data->fromStore?->full_name }} <small class="text-muted">({{ $data->fromStore?->type_label }})</small></td>
                                             <td>{{ $data->toStore?->full_name }} <small class="text-muted">({{ $data->toStore?->type_label }})</small></td>
                                             <td>
-                                                {{ number_format($data->quantity, 0, ',', ' ') }}
+                                                {{ $data->quantite_affichee }}
                                                 @if ($data->fund_id)<small class="d-block text-muted">{{ \App\Models\Fund::labelFor($data->fund_id) }}</small>@endif
                                             </td>
                                             <td>
@@ -293,7 +293,7 @@
                     document.getElementById('productCBM').innerText = cbm;
 
                     // Update image source
-                    document.getElementById('productImage').src = image ? `{{ asset('products/') }}/${image}` : "{{ asset('assets/img/no-image.jpg') }}";
+                    document.getElementById('productImage').src = image ? `{{ asset('products/') }}/${image}` : "{{ asset('assets/img/produit-sans-photo.svg') }}";
                 });
             });
         </script>

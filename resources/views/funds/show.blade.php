@@ -40,7 +40,7 @@
                 <h6 class="mb-3">Marchandises et ventes</h6>
                 <table class="table table-sm mb-0">
                     <tr><td>Achats financés</td><td class="text-end">{{ $fmt($s['achats']) }}</td></tr>
-                    <tr><td>Stock restant</td><td class="text-end">{{ $fmt($s['stock_qty']) }} u. · {{ $fmt($s['stock_valeur']) }}</td></tr>
+                    <tr><td>Stock restant</td><td class="text-end">{{ \App\Models\Product::resumeQuantites($stock, 'quantity') }} · {{ $fmt($s['stock_valeur']) }}</td></tr>
                     <tr><td>Ventes facturées</td><td class="text-end">{{ $fmt($s['ventes_facturees']) }}</td></tr>
                     <tr><td>dont encaissées</td><td class="text-end">{{ $fmt($s['ventes_encaissees']) }}</td></tr>
                     <tr><td class="text-muted">Reste à encaisser (clients)</td><td class="text-end text-muted">{{ $fmt($s['reste_a_encaisser']) }}</td></tr>
@@ -184,7 +184,7 @@
                             <tr>
                                 <td>{{ $r->libelle }}</td>
                                 <td>{{ $r->store_name }}</td>
-                                <td class="text-end">{{ $fmt($r->quantity) }}</td>
+                                <td class="text-end">{{ \App\Models\Product::quantiteEnUnite($r->quantity, $r->unite) }}</td>
                                 <td class="text-end">{{ $fmt($r->quantity * ($costs[$r->product_id] ?? 0)) }}</td>
                             </tr>
                             @empty
@@ -207,7 +207,7 @@
                                 <td>{{ \Illuminate\Support\Carbon::parse($l->created_at)->format('d/m/Y') }}</td>
                                 <td>{{ $l->numeroFacture }}</td>
                                 <td>{{ $productNames[$l->product_id] ?? '#'.$l->product_id }}</td>
-                                <td class="text-end">{{ $fmt($l->quantity) }}</td>
+                                <td class="text-end">{{ \App\Models\Product::quantiteEnUnite($l->quantity, $l->unite ?? null) }}</td>
                                 <td class="text-end">{{ $fmt($l->prixTotal) }}</td>
                                 <td class="text-end">{{ $fmt($l->cout) }}</td>
                                 <td class="text-end">{{ round($l->ratio * 100) }} %</td>

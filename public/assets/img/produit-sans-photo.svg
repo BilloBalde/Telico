@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Produit sans photo">
+  <rect width="200" height="200" fill="#F4F5EC"/>
+  <g fill="none" stroke="#ADB97E" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M100 52 L148 76 L148 128 L100 152 L52 128 L52 76 Z"/>
+    <path d="M52 76 L100 100 L148 76"/>
+    <path d="M100 100 L100 152"/>
+    <path d="M76 64 L124 88"/>
+  </g>
+</svg>

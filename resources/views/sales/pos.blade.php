@@ -937,6 +937,11 @@
                                                 Panier vide — cliquez sur un produit pour l'ajouter
                                             </div>
                                         </div>
+                                        {{-- Produit que la boutique n'a pas : pris chez un partenaire et
+                                             vendu dans la même facture que les autres articles. --}}
+                                        <button type="button" class="btn btn-pos-secondary w-100 mt-2" data-bs-toggle="modal" data-bs-target="#partnerLineModal">
+                                            <i class="fa fa-handshake me-1"></i> Produit pris chez un partenaire
+                                        </button>
                                     </div>
                                     <div class="split-card">
                                     </div>
@@ -1324,6 +1329,80 @@
             </div>
         </template>
 
+        {{-- Ligne tierce dans la vente en cours : produit du catalogue (même sans
+             stock) ou nouveau produit, partenaire et prix payé au partenaire. --}}
+        <div class="modal fade" id="partnerLineModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header" style="background:#F9F9F3;border-bottom:1px solid #CED5AE;">
+                        <h6 class="modal-title" style="color:#3E4C21;"><i class="fa fa-handshake me-2"></i>Produit pris chez un partenaire</h6>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted" style="font-size:13px;">
+                            Pour un produit que vous n'avez pas en stock : il est ajouté à la vente en cours, sur la même facture.
+                            Le client ne voit pas d'où il vient ; le montant dû au partenaire est suivi dans Rapports → Ventes tierces.
+                        </p>
+                        <div class="alert alert-danger py-2" id="plErreur" style="display:none;font-size:13px;"></div>
+                        <div class="form-group mb-2">
+                            <label>Produit</label>
+                            <select id="plProduit" class="form-control">
+                                <option value="">Choisir un produit du catalogue…</option>
+                                <option value="__nouveau">+ Nouveau produit (absent du catalogue)</option>
+                                @foreach ($produitsTiers as $pt)
+                                <option value="{{ $pt['id'] }}" data-prix="{{ $pt['prix'] }}" data-unite="{{ $pt['unite'] }}" data-singulier="{{ $pt['singulier'] }}">{{ $pt['libelle'] }} — {{ $pt['unite'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-2" id="plNouveau" style="display:none;">
+                            <div class="col-7">
+                                <label>Nom du nouveau produit</label>
+                                <input type="text" id="plLibelle" class="form-control" maxlength="225" placeholder="Ex. Robinet mélangeur">
+                            </div>
+                            <div class="col-5">
+                                <label>Unité</label>
+                                <select id="plUnite" class="form-control">
+                                    @foreach (\App\Models\Product::UNITES as $code => $u)
+                                    <option value="{{ $code }}">{{ $u['libelle'] }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group mb-2">
+                            <label>Partenaire qui fournit</label>
+                            <div class="d-flex gap-2">
+                                <select id="plPartenaire" class="form-control partner-select" style="flex:1;">
+                                    <option value="">Choisir un partenaire…</option>
+                                    @foreach ($partners as $partner)
+                                    <option value="{{ $partner->id }}">{{ $partner->name }}{{ $partner->phone ? ' ('.$partner->phone.')' : '' }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" class="btn btn-sm" id="plAjoutPartenaire" style="background:#3E4C21;color:#fff;" title="Nouveau partenaire"><i class="fa fa-plus"></i></button>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <label>Quantité <small class="text-muted" id="plUniteTexte"></small></label>
+                                <input type="number" min="1" step="1" value="1" id="plQuantite" class="form-control">
+                            </div>
+                            <div class="col-4">
+                                <label>Payé au partenaire <small class="text-muted">(par unité)</small></label>
+                                <input type="number" min="0" step="any" id="plPrixAmi" class="form-control">
+                            </div>
+                            <div class="col-4">
+                                <label>Prix de vente <small class="text-muted">(par unité)</small></label>
+                                <input type="number" min="0" step="any" id="plPrix" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel" data-bs-dismiss="modal">Annuler</button>
+                        <button type="button" class="btn btn-submit" id="plAjouter">Ajouter à la vente</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="modal fade" id="quickPartnerModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-sm modal-dialog-centered">
                 <div class="modal-content">
@@ -1401,10 +1480,10 @@
                     e.preventDefault();
                     Swal.fire({
                         icon: 'error',
-                        title: 'Vente à perte',
+                        title: 'Prix trop bas',
                         html: fautives.length > 1
-                            ? fautives.length + ' produits sont vendus en dessous de leur prix de revient.<br>Corrigez les prix en rouge avant de valider.'
-                            : 'Un produit est vendu en dessous de son prix de revient.<br>Corrigez le prix en rouge avant de valider.',
+                            ? fautives.length + ' produits sont vendus sous leur prix minimum autorisé (prix de vente minimum ou prix de revient).<br>Corrigez les prix en rouge avant de valider.'
+                            : 'Un produit est vendu sous son prix minimum autorisé (prix de vente minimum ou prix de revient).<br>Corrigez le prix en rouge avant de valider.',
                         confirmButtonText: 'Corriger',
                         confirmButtonColor: '#3E4C21',
                     });
@@ -1420,14 +1499,13 @@
                 // chaque ligne. Le contrôle qui fait foi reste celui du serveur.
                 const stockByProduct = @json($stockByProduct);
                 const locationLabels = @json($locationLabels);
-                // Unités de vente de chaque produit : [{code, libelle, facteur}].
-                // Le stock et les prix des cartes sont à la pièce (ou au rouleau).
+                // Unité de chaque produit : la quantité saisie et le prix sont
+                // directement dans cette unité (carton, douzaine…), sans conversion.
                 const unitesByProduct = @json($unitesByProduct);
-                function uniteOptions(productId) {
-                    const unites = unitesByProduct[productId] || [{ code: 'pcs', libelle: 'Pièce', facteur: 1 }];
-                    return unites.map(function (u) {
-                        return '<option value="' + u.code + '" data-facteur="' + u.facteur + '">' + u.libelle + '</option>';
-                    }).join('');
+                function motUnite(productId, n) {
+                    const u = unitesByProduct[productId];
+                    if (!u) return '';
+                    return n > 1 ? u.pluriel : u.singulier;
                 }
                 // Origine du stock → magasin qui facture (l'entrepôt d'un magasin
                 // facture pour ce magasin). Sert à préremplir le magasin de vente
@@ -1461,7 +1539,7 @@
                     if (choisi < 0) choisi = 0;
                     return rows.map(function (r, idx) {
                         // Emplacement — propriétaire (fonds propres ou fonds d'un associé) — stock
-                        const label = (locationLabels[r.id] || ('Emplacement #' + r.id)) + ' — ' + r.owner + ' — ' + r.qty.toLocaleString('fr-FR') + ' disponibles';
+                        const label = (locationLabels[r.id] || ('Emplacement #' + r.id)) + ' — ' + r.owner + ' — ' + r.qty.toLocaleString('fr-FR') + ' ' + (motUnite(productId, r.qty) || 'pièces') + ' disponible' + (r.qty > 1 ? 's' : '');
                         return '<option value="' + r.id + '" data-fund="' + (r.fund || '') + '" data-available="' + r.qty + '"' + (idx === choisi ? ' selected' : '') + '>' + label + '</option>';
                     }).join('');
                 }
@@ -1517,6 +1595,8 @@
                     const productPrice = parseFloat(item.getAttribute('data-price')) || 0;
                     // Prix de revient : plancher absolu, vendre en dessous est refusé.
                     const productCost = parseFloat(item.getAttribute('data-cost')) || 0;
+                    // Prix de vente minimum de la fiche produit (0 = non fixé).
+                    const productMinPrice = parseFloat(item.getAttribute('data-min-price')) || 0;
                     const libelle = item.querySelector('.productsetcontent h5').textContent;
                     const imageUrl = item.querySelector('.productsetimg img').src;
 
@@ -1563,14 +1643,8 @@
                             '</div>' +
                         '</li>' +
                         '<li class="qty-price-group">' +
-                            '<div class="unite-group form-group"' + ((unitesByProduct[product_id] || []).length > 1 ? '' : ' style="display:none"') + '>' +
-                                '<h6>Unité</h6>' +
-                                '<select name="sales[' + i + '][unite]" class="form-control unite-select">' +
-                                    uniteOptions(product_id) +
-                                '</select>' +
-                            '</div>' +
                             '<div class="quantity-set form-group">' +
-                                '<h6>Qté</h6>' +
+                                '<h6>Qté <span style="font-weight:400;color:#6B7A35;">(' + (unitesByProduct[product_id]?.libelle || 'Pièce') + ')</span></h6>' +
                                 '<div class="qty-stepper">' +
                                     '<button type="button" class="qty-decrement">-</button>' +
                                     '<input type="number" min="1" name="sales[' + i + '][quantity]" value="1" class="quantity-field form-control">' +
@@ -1622,12 +1696,12 @@
                     '</ul>';
 
                     productList.appendChild(newRow);
-                    initializeRowEvents(newRow, productPrice, productCost);
+                    initializeRowEvents(newRow, productPrice, productCost, productMinPrice);
                 });
 
                 // productCost doit être passé en paramètre : initializeRowEvents est
                 // déclarée hors du gestionnaire de clic et ne voit donc pas ses variables.
-                function initializeRowEvents(row, productPrice, productCost) {
+                function initializeRowEvents(row, productPrice, productCost, productMinPrice = 0) {
                     const quantityField = row.querySelector('.quantity-field');
                     const priceField = row.querySelector('.price-field');
                     const rowTotalField = row.querySelector('.row-total-price');
@@ -1636,22 +1710,7 @@
                     const thirdPartyFlag = row.querySelector('.third-party-flag');
                     const addPartnerBtn = row.querySelector('.btn-add-partner');
                     const partnerSelect = row.querySelector('.partner-select');
-                    // Facteur de l'unité choisie : 1 pour la pièce, 12 pour la
-                    // douzaine, le nombre de pièces du carton ou du paquet.
-                    const uniteSelect = row.querySelector('.unite-select');
-                    function facteur() {
-                        return parseInt(uniteSelect?.selectedOptions[0]?.dataset.facteur || '1', 10) || 1;
-                    }
-                    function libelleUnite() {
-                        return uniteSelect?.selectedOptions[0]?.textContent || 'Pièce';
-                    }
-                    uniteSelect?.addEventListener('change', function () {
-                        // Le prix proposé suit l'unité : carton de 24 = 24 × prix pièce,
-                        // arrondi au franc supérieur (jamais sous le prix affiché).
-                        priceField.value = facteur() > 1 ? Math.ceil(productPrice * facteur() - 0.001) : productPrice;
-                        controlerPrix();
-                    });
-
+                    const productId = row.querySelector('input[name$="[product_id]"]').value;
                     if (thirdPartyCheck) {
                         thirdPartyCheck.addEventListener('change', function() {
                             if (this.checked) {
@@ -1703,13 +1762,13 @@
                         const fundInput = row.querySelector('.fund-input');
                         if (fundInput) fundInput.value = tierce ? '' : (opt?.dataset.fund || '');
                         const dispo = parseInt(opt?.dataset.available || '0', 10);
-                        const qty = (parseInt(quantityField.value, 10) || 0) * facteur();
+                        const qty = parseInt(quantityField.value, 10) || 0;
                         if (!tierce && qty > dispo) {
                             originSelect.dataset.stockError = '1';
                             originSelect.classList.add('is-invalid');
                             originError.textContent = 'Stock insuffisant : ' + dispo.toLocaleString('fr-FR')
                                 + ' disponible(s) à cet emplacement, ' + qty.toLocaleString('fr-FR') + ' demandé(s)'
-                                + (facteur() > 1 ? ' (' + quantityField.value + ' × ' + libelleUnite() + ')' : '') + '.';
+                                + (motUnite(productId, 2) ? ' (' + motUnite(productId, 2) + ')' : '') + '.';
                             originError.style.display = 'block';
                         } else {
                             delete originSelect.dataset.stockError;
@@ -1738,7 +1797,12 @@
                             const achat = parseFloat(row.querySelector('input[name*="purchase_price_from_partner"]')?.value) || 0;
                             return { valeur: achat, origine: "prix d'achat au partenaire" };
                         }
-                        return { valeur: productCost * facteur(), origine: 'prix de revient' + (facteur() > 1 ? ' par ' + libelleUnite().toLowerCase() : '') };
+                        // Même règle que le serveur : le plus haut du prix de vente
+                        // minimum (fiche produit) et du prix de revient.
+                        const unite = motUnite(productId, 1) || 'pièce';
+                        return productMinPrice > 0 && productMinPrice >= productCost
+                            ? { valeur: productMinPrice, origine: 'prix de vente minimum par ' + unite, minimum: true }
+                            : { valeur: productCost, origine: 'prix de revient par ' + unite, minimum: false };
                     }
 
                     // Deux situations distinctes, qu'il ne faut pas confondre :
@@ -1749,22 +1813,22 @@
                         const priceError = row.querySelector('.price-error');
                         const plancher = plancherDeLaLigne();
 
-                        // Tolérance d'un centime : 24 × 6 666,67 ne tombe pas juste en virgule flottante.
-                        if (plancher.valeur > 0 && saisi < plancher.valeur - 0.01) {
+                        if (plancher.valeur > 0 && saisi < plancher.valeur) {
                             priceField.dataset.belowCost = '1';
                             priceField.classList.add('is-invalid');
                             if (priceError) {
-                                priceError.textContent = 'Vente à perte : minimum '
+                                priceError.textContent = (plancher.minimum ? 'Prix sous le minimum autorisé : ' : 'Vente à perte : minimum ')
                                     + plancher.valeur.toLocaleString('fr-FR') + ' GNF (' + plancher.origine + ')';
                                 priceError.style.color = '#d92d20';
                                 priceError.style.display = 'block';
                             }
-                        } else if (saisi < productPrice * facteur() - 0.01) {
+                        } else if (saisi < productPrice) {
                             delete priceField.dataset.belowCost;
                             priceField.classList.remove('is-invalid');
                             if (priceError) {
                                 priceError.textContent = 'Remise appliquée — prix affiché : '
-                                    + (productPrice * facteur()).toLocaleString('fr-FR') + ' GNF';
+                                    + productPrice.toLocaleString('fr-FR') + ' GNF'
+                                    + (plancher.minimum ? ' · minimum ' + plancher.valeur.toLocaleString('fr-FR') + ' GNF' : '');
                                 priceError.style.color = '#b45309';
                                 priceError.style.display = 'block';
                             }
@@ -1796,6 +1860,134 @@
 
                     updateRowTotal();
                 }
+
+                // ── Produit pris chez un partenaire, dans la vente en cours ──
+                (function () {
+                    const modalEl = document.getElementById('partnerLineModal');
+                    if (!modalEl) return;
+                    const modal = new bootstrap.Modal(modalEl);
+                    const champ = id => document.getElementById(id);
+                    const echapper = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                    const fmt = n => Number(n).toLocaleString('fr-FR');
+
+                    function produitChoisi() { return champ('plProduit').selectedOptions[0]; }
+                    function uniteChoisie() {
+                        const opt = produitChoisi();
+                        if (opt && opt.value === '__nouveau') {
+                            const u = champ('plUnite').selectedOptions[0];
+                            return { libelle: u.textContent.trim(), singulier: u.textContent.trim().toLowerCase() };
+                        }
+                        return opt && opt.value ? { libelle: opt.dataset.unite, singulier: opt.dataset.singulier } : null;
+                    }
+                    function rafraichir() {
+                        const opt = produitChoisi();
+                        champ('plNouveau').style.display = opt && opt.value === '__nouveau' ? '' : 'none';
+                        const u = uniteChoisie();
+                        champ('plUniteTexte').textContent = u ? '(' + u.libelle + ')' : '';
+                        if (opt && opt.dataset.prix && !champ('plPrix').value) champ('plPrix').value = opt.dataset.prix;
+                    }
+                    champ('plProduit').addEventListener('change', rafraichir);
+                    champ('plUnite').addEventListener('change', rafraichir);
+                    if (window.jQuery && jQuery.fn.select2) {
+                        jQuery('#plProduit').select2({ dropdownParent: jQuery(modalEl), width: '100%' }).on('change', rafraichir);
+                    }
+                    champ('plAjoutPartenaire').addEventListener('click', function () {
+                        targetPartnerSelect = champ('plPartenaire');
+                        document.getElementById('quickPartnerForm').reset();
+                        document.getElementById('quickPartnerError').style.display = 'none';
+                        quickPartnerModal.show();
+                    });
+
+                    function erreur(message) {
+                        champ('plErreur').textContent = message;
+                        champ('plErreur').style.display = message ? 'block' : 'none';
+                    }
+
+                    champ('plAjouter').addEventListener('click', function () {
+                        const opt = produitChoisi();
+                        const nouveau = opt && opt.value === '__nouveau';
+                        const libelle = nouveau ? champ('plLibelle').value.trim() : (opt && opt.value ? opt.textContent.split(' — ')[0].trim() : '');
+                        const partenaire = champ('plPartenaire').selectedOptions[0];
+                        const qte = parseInt(champ('plQuantite').value, 10) || 0;
+                        const prixAmi = parseFloat(champ('plPrixAmi').value) || 0;
+                        const prix = parseFloat(champ('plPrix').value) || 0;
+
+                        if (!opt || !opt.value) return erreur('Choisissez le produit.');
+                        if (nouveau && !libelle) return erreur('Indiquez le nom du nouveau produit.');
+                        if (!partenaire || !partenaire.value) return erreur('Choisissez le partenaire qui fournit le produit.');
+                        if (qte < 1) return erreur("La quantité doit être d'au moins 1.");
+                        if (prixAmi <= 0) return erreur('Indiquez le prix payé au partenaire.');
+                        if (prix <= 0) return erreur('Indiquez le prix de vente.');
+                        if (prix < prixAmi) return erreur('Vente à perte : le prix de vente est inférieur au prix payé au partenaire.');
+                        erreur('');
+
+                        i++;
+                        const u = uniteChoisie();
+                        const nomPartenaire = partenaire.textContent.replace(/\s*\(.*\)\s*$/, '').trim();
+                        const ligne = document.createElement('li');
+                        ligne.classList.add('product-row', 'product-row--tiers');
+                        ligne.setAttribute('data-sku', 'tiers-' + i);
+                        ligne.innerHTML = '<ul class="product-lists">' +
+                            (nouveau
+                                ? '<input type="hidden" name="sales[' + i + '][nouveau_libelle]" value="' + echapper(libelle) + '">' +
+                                  '<input type="hidden" name="sales[' + i + '][nouvelle_unite]" value="' + echapper(champ('plUnite').value) + '">'
+                                : '<input type="hidden" name="sales[' + i + '][product_id]" value="' + echapper(opt.value) + '">') +
+                            '<input type="hidden" name="sales[' + i + '][is_third_party]" value="1">' +
+                            '<input type="hidden" name="sales[' + i + '][partner_id]" value="' + echapper(partenaire.value) + '">' +
+                            '<input type="hidden" name="sales[' + i + '][purchase_price_from_partner]" value="' + prixAmi + '">' +
+                            '<li style="width:100%;">' +
+                                '<h4 style="font-size:14px;margin-bottom:2px;">' + echapper(libelle) + '</h4>' +
+                                '<span class="badge" style="background:#FBF6EA;color:#8A6A24;border:1px solid #C7A150;font-weight:600;white-space:normal;">' +
+                                    '<i class="fa fa-handshake me-1"></i>Pris chez ' + echapper(nomPartenaire) + ' · payé ' + fmt(prixAmi) + ' GNF / ' + echapper(u ? u.singulier : 'pièce') +
+                                '</span>' +
+                            '</li>' +
+                            '<li class="qty-price-group">' +
+                                '<div class="quantity-set form-group"><h6>Qté <span style="font-weight:400;color:#6B7A35;">(' + echapper(u ? u.libelle : 'Pièce') + ')</span></h6>' +
+                                    '<input type="number" min="1" name="sales[' + i + '][quantity]" value="' + qte + '" class="quantity-field form-control"></div>' +
+                                '<div class="price form-group"><h6>Prix de Vente</h6>' +
+                                    '<input type="text" style="width:150px" name="sales[' + i + '][prix]" value="' + prix + '" class="price-field form-control">' +
+                                    '<div class="text-danger price-error mt-1" style="font-size:0.9rem;display:none;"></div></div>' +
+                            '</li>' +
+                            '<li><div class="row-total form-group"><h6>Total ligne</h6><input type="text" class="form-control row-total-price" readonly></div></li>' +
+                            '<li><button type="button" class="row-remove-btn" title="Retirer"><i class="fa fa-trash"></i></button></li>' +
+                        '</ul>';
+                        productList.appendChild(ligne);
+
+                        const qteChamp = ligne.querySelector('.quantity-field');
+                        const prixChamp = ligne.querySelector('.price-field');
+                        function recalculer() {
+                            const p = parseFloat(prixChamp.value) || 0;
+                            const erreurPrix = ligne.querySelector('.price-error');
+                            // Plancher : le prix payé au partenaire (même règle que le serveur).
+                            if (p < prixAmi) {
+                                prixChamp.dataset.belowCost = '1';
+                                prixChamp.classList.add('is-invalid');
+                                erreurPrix.textContent = 'Vente à perte : minimum ' + fmt(prixAmi) + ' GNF (prix payé au partenaire)';
+                                erreurPrix.style.display = 'block';
+                            } else {
+                                delete prixChamp.dataset.belowCost;
+                                prixChamp.classList.remove('is-invalid');
+                                erreurPrix.style.display = 'none';
+                            }
+                            ligne.querySelector('.row-total-price').value = ((parseInt(qteChamp.value, 10) || 0) * p).toFixed(2);
+                            updateTotalPrice();
+                        }
+                        qteChamp.addEventListener('input', recalculer);
+                        prixChamp.addEventListener('input', recalculer);
+                        ligne.querySelector('.row-remove-btn').addEventListener('click', function () {
+                            ligne.remove();
+                            updateTotalPrice();
+                        });
+                        recalculer();
+
+                        // Prêt pour un autre produit, même partenaire.
+                        ['plLibelle', 'plPrixAmi', 'plPrix'].forEach(id => champ(id).value = '');
+                        champ('plQuantite').value = 1;
+                        if (window.jQuery && jQuery.fn.select2) jQuery('#plProduit').val('').trigger('change'); else champ('plProduit').value = '';
+                        rafraichir();
+                        modal.hide();
+                    });
+                })();
 
                 function updateTotalPrice() {
                     synchroniserCaisse();

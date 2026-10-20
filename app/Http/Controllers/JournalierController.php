@@ -13,6 +13,9 @@ class JournalierController extends Controller
     public function __construct()
     {
         $this->middleware('auth.check');
+        // Registre de caisse de l'entreprise (avances), hors menu et sans magasin :
+        // réservé à la vue globale.
+        $this->middleware('permission:stores.all');
     }
 
     public function index(Request $request)

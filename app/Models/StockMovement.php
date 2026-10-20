@@ -14,6 +14,8 @@ use LogicException;
  */
 class StockMovement extends Model
 {
+    use Concerns\FigeUniteProduit;
+
     public const PURCHASE = 'PURCHASE';
     public const PURCHASE_CANCEL = 'PURCHASE_CANCEL';
     public const SALE = 'SALE';
@@ -39,7 +41,7 @@ class StockMovement extends Model
     ];
 
     protected $fillable = [
-        'product_id', 'store_id', 'type', 'quantity', 'stock_before', 'stock_after',
+        'product_id', 'store_id', 'type', 'quantity', 'unite', 'stock_before', 'stock_after',
         'counterpart_store_id', 'source_type', 'source_id', 'document_ref',
         'customer_id', 'supplier_id', 'unit_price', 'user_id', 'reason', 'fund_id',
     ];

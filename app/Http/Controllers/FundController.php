@@ -84,7 +84,7 @@ class FundController extends Controller
             ->join('products as p', 'p.id', '=', 'sp.product_id')
             ->join('stores as st', 'st.id', '=', 'sp.store_id')
             ->where('sp.fund_id', $fund->id)->where('sp.quantity', '!=', 0)
-            ->select('p.id as product_id', 'p.libelle', 'st.store_name', 'sp.quantity')
+            ->select('p.id as product_id', 'p.libelle', 'p.unite', 'st.store_name', 'sp.quantity')
             ->orderBy('p.libelle')->get();
         $costs = $this->funds->unitCosts($fund->id);
 

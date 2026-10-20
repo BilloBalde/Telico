@@ -232,9 +232,10 @@
                                             <td>{{ $data->numeroFacture }}</td>
                                             <td class="productimgname">
                                                 <a href="javascript:void(0);" class="product-img" onclick="showProductDetails({{ $data->product_id }})">
-                                                    <img src="{{ asset('products/' . $data->produitImage) }}" alt="product">
+                                                    <img src="{{ \App\Models\Product::urlImage($data->produitImage) }}" alt="product">
                                                 </a>
                                                 <a href="javascript:void(0);" onclick="showProductDetails({{ $data->product_id }})">{{ $data->produit }}</a>
+                                                @if ($data->is_third_party)<small class="d-block" style="color:#8A6A24;"><i class="fa fa-handshake"></i> Pris chez {{ $data->partner?->name ?? 'un partenaire' }}</small>@endif
                                             </td>
                                             <td>{{ $data->quantite_affichee }}</td>
                                             <td>{{ $data->prix_affiche }}</td>

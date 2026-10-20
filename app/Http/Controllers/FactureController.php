@@ -71,7 +71,7 @@ class FactureController extends Controller
         $query->orderBy('created_at', 'desc');
 
         // Eager loading (client, boutique, paiements) + somme des intérêts en SQL
-        $query->with(['customer', 'store', 'paiements' => fn ($q) => $q->latest()])
+        $query->with(['customer', 'store', 'sales:id,numeroFacture,product_id,quantity,unite', 'paiements' => fn ($q) => $q->latest()])
             ->withSum('sales as interet_total', 'interet');
 
         // Périmètre magasin : un employé rattaché ne voit que les factures de
@@ -94,10 +94,7 @@ class FactureController extends Controller
         $user = User::where('role_id', 2)->first();
         $invoice = Sale::where('numeroFacture', $facture)->get();
         $laFacture = Facture::where('numero_facture', $facture)->firstOrFail();
-        if (!$laFacture) {
-            abort(404, "Facture introuvable.");
-        }
-        $this->authorizeStore($laFacture->store_id);
+        $this->autoriserPerimetre($laFacture->store_id, 'Cette facture appartient à un autre magasin.');
         $customer = Customer::where('id', $laFacture->customer_id)->first();
         $paiements = Payment::where('facture_id', $laFacture->id)->get();
         return view('factures.show', compact('invoice', 'facture', 'laFacture', 'customer', 'user', 'paiements'));
@@ -112,7 +109,7 @@ class FactureController extends Controller
         $invoice     = Sale::where('numeroFacture', $facture)->get();
         $company     = Company::current();
         $managerName = auth()->user()->name ?? 'Gérant';
-    
+
         $pdf = Pdf::loadView('factures.pdf', compact(
                 'facture', 'laFacture', 'customer', 'invoice', 'company', 'managerName'
             ))
@@ -123,7 +120,7 @@ class FactureController extends Controller
                 'isRemoteEnabled'      => true,
                 'dpi'                  => 150,
             ]);
-    
+
         return $pdf->stream("Facture_{$facture}.pdf");
         // Pour forcer le téléchargement à la place : $pdf->download("Facture_{$facture}.pdf")
     }*/
@@ -158,9 +155,10 @@ class FactureController extends Controller
         $user = User::where('role_id', 2)->first();
         $invoice = Sale::where('numeroFacture', $facture)->get();
         $laFacture = Facture::where('numero_facture', $facture)->firstOrFail();
+        $this->autoriserPerimetre($laFacture->store_id, 'Cette facture appartient à un autre magasin.');
         $customer = Customer::where('id', $laFacture->customer_id)->first();
         $paiements = Payment::where('facture_id', $laFacture->id)->get();
-        
+
         return view('factures.bon_de_commande', compact('invoice', 'facture', 'laFacture', 'customer', 'user', 'paiements'));
     }
 
@@ -171,12 +169,13 @@ class FactureController extends Controller
         $user = User::where('role_id', 2)->first();
         $invoice = Sale::where('numeroFacture', $facture)->get();
         $laFacture = Facture::where('numero_facture', $facture)->firstOrFail();
+        $this->autoriserPerimetre($laFacture->store_id, 'Cette facture appartient à un autre magasin.');
         $customer = Customer::where('id', $laFacture->customer_id)->first();
         $paiements = Payment::where('facture_id', $laFacture->id)->get();
-        
+
         return view('factures.bon_de_sortie', compact('invoice', 'facture', 'laFacture', 'customer', 'user', 'paiements'));
     }
-    
+
     public function storeCustomer(Request $request)
     {
         $request->validate([
@@ -203,7 +202,7 @@ class FactureController extends Controller
             ], 500);
         }
     }
-    
+
     public function facturationForm(){
         $userStoreId = Auth::user()->forcedStoreId();
         $boutiques = Store::optionsFor(Auth::user());
@@ -213,7 +212,7 @@ class FactureController extends Controller
         $funds = \App\Models\Fund::active()->orderBy('name')->get(['id', 'name']);
         return view('factures.create', compact('boutiques', 'customers', 'userStoreId', 'numeroFacture', 'funds'));
     }
-        
+
     public function facturationStore(Request $request){
         // Un gérant de boutique ne peut facturer que pour sa propre boutique.
         if ($storeId = $this->ownStoreIdOverride()) {
@@ -226,8 +225,10 @@ class FactureController extends Controller
             'customer_id' => 'required',
             'store_id' => 'required',
             'products.*.productName' => 'required|string|max:255',
+            // Quantité dans l'unité unique du produit (cartons, douzaines,
+            // rouleaux…). qty_per_ctn n'est plus saisi : toujours 1.
             'products.*.cartons' => 'required|integer|min:1',
-            'products.*.qty_per_ctn' => 'required|integer|min:1',
+            'products.*.qty_per_ctn' => 'nullable|integer|min:1',
             'products.*.price' => 'required|numeric|min:0',
             'products.*.subtotal' => 'required|numeric|min:0',
             'products.*.image' => 'nullable|file|mimes:jpg,png,jpeg',
@@ -251,7 +252,7 @@ class FactureController extends Controller
                     $product['image']->move(public_path('products'), $filename);
                     $uploadedImagePath = $filename;
                 }
-                
+
                 $productName = trim($product['productName']);
                 $productName = str_replace('`', '', $productName); // Remove backticks that can cause SQL issues
                 $produit = Product::firstOrNew(['libelle' => $productName]);
@@ -268,11 +269,14 @@ class FactureController extends Controller
                     $produit->image = 'default.png';
                 }
                 $produit->save();
-                
-                $product['quantity'] = $product['cartons'] * $product['qty_per_ctn'];
-                $product["prixTotal"] = $product['subtotal'];
+
+                // Quantité et prix sont dans l'unité unique du produit, sans
+                // conversion : 3 cartons à 85 000 = 255 000. Le sous-total est
+                // recalculé ici plutôt que repris du navigateur.
+                $product['quantity'] = (int) $product['cartons'];
+                $product["prixTotal"] = round((float) $product['price'] * $product['quantity'], 2);
                 $total_pcs += $product['quantity'];
-                $total_amount += $product['subtotal'];
+                $total_amount += $product["prixTotal"];
                 //dd($product['cartons'], $product['qty_per_ctn'], $product['subtotal']);
                 // Atomic decrement to avoid overselling under concurrency
                 // Propriétaire de la marchandise de la ligne : fonds propres
@@ -292,6 +296,9 @@ class FactureController extends Controller
                 // (L'ancien calcul prenait le dernier « achat simple », ce qui
                 // donnait des intérêts négatifs ou égaux au prix de vente.)
                 $coutFonds = $fundId ? app(\App\Services\FundService::class)->unitCost($fundId, (int) $produit->id) : null;
+                // Même règle qu'à la caisse : pas de vente sous le prix minimum du
+                // produit ni sous son prix de revient (l'erreur annule toute la facture).
+                $produit->verifierPrixDeVente((float) $product['price'], $coutFonds);
                 $product["interet"] = $fundId
                     ? ($coutFonds > 0 ? ((float) $product['price'] - $coutFonds) * (int) $product['quantity'] : 0)
                     : $produit->interetPour((float) $product['price'], (int) $product['quantity']);
@@ -310,12 +317,12 @@ class FactureController extends Controller
                     ]
                 );
             }
-            
+
             if ($request->avance > $total_amount) {
                 throw new \RuntimeException('Le montant de la commande est inférieur à l\'avance.');
             }
             $reste = $total_amount - $request->avance;
-            
+
             $facture = Facture::create([
                 'numero_facture' => $request->numeroFacture,
                 'store_id' => $request->store_id,
@@ -330,7 +337,7 @@ class FactureController extends Controller
                 'statut' => 'non payé',
                 'livraison' => 'non livré',
             ]);
-            
+
             $receiptNumber = generateReceiptNumber('RCF', (Payment::max('id') ?? 0) + 1);
             Payment::create([
                 'facture_id' => $facture->id,
@@ -341,7 +348,7 @@ class FactureController extends Controller
                 'note' => "un premier versement de ".$facture->avance." effectué lors de l'emission de la facture comme avance.",
                 'receipt_number' => $receiptNumber,
             ]);
-            
+
             $sms = "Facture cree avec success";
             $customer = Customer::find($request->customer_id);
             $customer->recalculerCompteurs();
@@ -403,7 +410,7 @@ class FactureController extends Controller
                 'statut' => 'non payé',
                 'livraison' => 'non livré',
             ]);
-            
+
             $receiptNumber = generateReceiptNumber('RCF', (Payment::max('id') ?? 0) + 1);
             Payment::create([
                 'facture_id' => $facture->id,
@@ -414,7 +421,7 @@ class FactureController extends Controller
                 'note' => "un premier versement de ".$facture->avance." effectué lors de l'emission de la facture comme avance.",
                 'receipt_number' => $receiptNumber,
             ]);
-            
+
             $sms = "Facture cree avec success";
             $countCustomerInvoices = Facture::where('customer_id', $request->customer_id)->count();
             if ($countCustomerInvoices >= 5){
@@ -437,11 +444,13 @@ class FactureController extends Controller
     }
 
     public function edit($id){
-        $facture = Facture::find($id);
+        $facture = Facture::findOrFail($id);
+        $this->autoriserPerimetre($facture->store_id, 'Cette facture appartient à un autre magasin.');
         return view('factures.edit', compact('facture'));
     }
 
     public function update(Facture $facture){
+        $this->autoriserPerimetre($facture->store_id, 'Cette facture appartient à un autre magasin.');
         try {
             $facture->livraison = 'livré';
             $facture->save();
@@ -450,7 +459,7 @@ class FactureController extends Controller
             return redirect()->back()->with('error', 'erreur lors de la modification'.$th->getMessage());
         }
     }
-    
+
     public function destroy(Request $request, Facture $facture)
     {
         // Une vente encaissée ne se supprime pas : cette méthode efface

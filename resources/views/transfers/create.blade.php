@@ -17,7 +17,7 @@
                                 <select name="product_id" id="product_id" class="form-control" required>
                                     <option value="">Sélectionner le produit</option>
                                     @foreach ($produits as $item)
-                                    <option value="{{ $item->id }}" {{ old('product_id') == $item->id ? 'selected' : '' }}>{{ $item->libelle }} ({{ $item->sku }})</option>
+                                    <option value="{{ $item->id }}" data-unite-pluriel="{{ \App\Models\Product::motUnite($item->unite, 2) }}" {{ old('product_id') == $item->id ? 'selected' : '' }}>{{ $item->libelle }} ({{ $item->sku }}) — {{ $item->unite_libelle }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -62,8 +62,9 @@
                         @endif
                         <div class="col-12">
                             <div class="form-group">
-                                <label for="quantity">Quantité</label>
+                                <label for="quantity">Quantité <span class="text-muted" id="transfertUnite"></span></label>
                                 <input type="number" min="1" name="quantity" id="quantity" class="form-control" value="{{ old('quantity') }}" required>
+                                <small class="text-muted">Dans l'unité du produit : un produit au carton se transfère en cartons.</small>
                             </div>
                         </div>
                         <div class="col-12">
@@ -99,3 +100,17 @@
         </div>
     </div>
 </div>
+<script>
+    // Unité du produit choisi, affichée à côté de la quantité (« en cartons »).
+    (function () {
+        const produit = document.getElementById('product_id');
+        const unite = document.getElementById('transfertUnite');
+        function rafraichir() {
+            const opt = produit.selectedOptions[0];
+            unite.textContent = opt && opt.value ? '(en ' + opt.dataset.unitePluriel + ')' : '';
+        }
+        produit.addEventListener('change', rafraichir);
+        if (window.jQuery) jQuery(produit).on('change', rafraichir);
+        rafraichir();
+    })();
+</script>

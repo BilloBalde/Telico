@@ -385,7 +385,7 @@
                                         <th>Douane allouée</th>
                                      
                                         @endif
-                                        <th>Coût de revient / unité</th>
+                                        <th>Coût de revient par unité</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -397,18 +397,18 @@
                                                 {{ $item->product->libelle ?? '—' }}
                                             </div>
                                         </td>
-                                        <td>{{ $item->quantity }}</td>
+                                        <td>{{ $item->quantite_affichee }}</td>
                                         @if($order->origin === 'chine')
                                         <td>{{ number_format($item->unit_price_foreign, 2) }}</td>
                                         @endif
-                                        <td>{{ number_format($item->unit_price_gnf, 0, ',', ' ') }}</td>
+                                        <td>{{ number_format($item->unit_price_gnf, 0, ',', ' ') }} <small class="text-muted">/ {{ $item->mot_unite }}</small></td>
                                         @if($order->origin === 'chine')
                                         <td>{{ $item->cbm_per_carton ? number_format($item->cbm_per_carton, 4) : '—' }}</td>
                                         <td><span class="po-cbm-badge">{{ number_format($item->line_total_cbm, 3) }}</span></td>
                                         <td>{{ number_format($item->allocated_freight_gnf, 0, ',', ' ') }}</td>
                                         <td>{{ number_format($item->allocated_customs_gnf, 0, ',', ' ') }}</td>
                                         @endif
-                                        <td><span class="po-landed-cost">{{ number_format($item->landed_unit_cost_gnf, 0, ',', ' ') }} GNF</span></td>
+                                        <td><span class="po-landed-cost">{{ number_format($item->landed_unit_cost_gnf, 0, ',', ' ') }} GNF</span> <small class="text-muted">/ {{ $item->mot_unite }}</small></td>
                                     </tr>
                                     @endforeach
                                 </tbody>

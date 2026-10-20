@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class DeviLine extends Model
 {
-    use HasFactory;
+    use HasFactory, Concerns\FigeUniteProduit;
 
     protected $guarded = ['id'];
 

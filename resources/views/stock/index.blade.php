@@ -19,9 +19,9 @@
 
     <div class="row">
         @foreach ([
-            ['Stock total (unités)', number_format($totals['stock'], 0, ',', ' ')],
-            ['Stock magasins', number_format($totals['stock_magasins'], 0, ',', ' ')],
-            ['Stock entrepôts', number_format($totals['stock_entrepots'], 0, ',', ' ')],
+            ['Stock total', $totals['stock_unites']],
+            ['Stock magasins', $totals['stock_magasins_unites']],
+            ['Stock entrepôts', $totals['stock_entrepots_unites']],
             ['Valeur au prix de revient', numberDelimiter($totals['value']) . ' FG'],
             ['Ventes du jour', numberDelimiter($totals['sales_today']) . ' FG'],
             ['dont ventes directes entrepôts', numberDelimiter($totals['direct_today']) . ' FG'],
@@ -56,7 +56,7 @@
                             <th>Emplacement</th>
                             <th>Type</th>
                             <th>Rattaché à</th>
-                            <th class="text-end">Stock (unités)</th>
+                            <th class="text-end">Stock</th>
                             <th class="text-end">Produits en stock</th>
                             <th class="text-end">Valeur (revient)</th>
                             <th class="text-end">Ventes du jour</th>
@@ -72,10 +72,10 @@
                             </td>
                             <td>{{ $row->store->type_label }}</td>
                             <td>{{ $row->store->parent?->store_name ?? '—' }}</td>
-                            <td class="text-end">{{ number_format($row->qty, 0, ',', ' ') }}</td>
+                            <td class="text-end">{{ $row->qty_unites }}</td>
                             <td class="text-end">{{ $row->products }}</td>
                             <td class="text-end">{{ numberDelimiter($row->value) }} FG</td>
-                            <td class="text-end">{{ numberDelimiter($row->sales_today) }} FG <small class="text-muted">({{ $row->qty_today }} u.)</small></td>
+                            <td class="text-end">{{ numberDelimiter($row->sales_today) }} FG @if ($row->qty_today)<small class="d-block text-muted">{{ $row->ventes_unites }}</small>@endif</td>
                         </tr>
                         @empty
                         <tr><td colspan="7" class="text-center text-muted">Aucun emplacement dans votre périmètre.</td></tr>

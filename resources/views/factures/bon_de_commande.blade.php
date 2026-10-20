@@ -42,7 +42,7 @@
             border: none;
         }
         .btn i { margin-right: 5px; }
-        .btn-added { background-color: #ff9f43; color: white; }
+        .btn-added { background-color: #3E4C21; color: white; }
         .btn-added:hover { background-color: #ff820e; }
         .btn-cancel { background-color: #6c757d; color: white; }
         .btn-cancel:hover { background-color: #5a6268; }
@@ -441,6 +441,10 @@
 
                             <!-- Résumé des montants -->
                             <div class="bon-summary">
+                                <div class="bon-summary-row">
+                                    <span class="bon-summary-label">Articles :</span>
+                                    <span class="bon-summary-value">{{ \App\Models\Product::resumeQuantites($invoice, 'quantity') }}</span>
+                                </div>
                                 <div class="bon-summary-row bon-summary-total">
                                     <span class="bon-summary-label">GRAND TOTAL:</span>
                                     <span class="bon-summary-value">{{ number_format($laFacture->montant_total, 0, ',', ' ') }} FG</span>

@@ -28,12 +28,12 @@ class PaymentController extends Controller
 
             $customers = Customer::all();
             $updatedCount = 0;
-            
+
             foreach ($customers as $customer) {
                 // Calculate total_taken: sum of all invoice amounts
                 $totalTaken = Facture::where('customer_id', $customer->id)
                                     ->sum('montant_total');
-                
+
                 // Calculate total_repaid: sum of all payments for this customer's invoices
                 $totalRepaid = Payment::whereIn('facture_id', function($query) use ($customer) {
                                         $query->select('id')
@@ -41,22 +41,22 @@ class PaymentController extends Controller
                                             ->where('customer_id', $customer->id);
                                     })
                                     ->sum('versement');
-                
+
                 // Calculate balance
                 $balance = $totalTaken - $totalRepaid;
-                
+
                 // Update customer record
                 $customer->update([
                     'total_taken' => $totalTaken,
                     'total_repaid' => $totalRepaid,
                     'balance' => max(0, $balance) // Ensure balance doesn't go negative
                 ]);
-                
+
                 $updatedCount++;
             }
-            
+
             return "Updated {$updatedCount} customer records.";
-            
+
         } catch (\Throwable $th) {
             return "Error: " . $th->getMessage();
         }
@@ -76,7 +76,8 @@ class PaymentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Payment::with('facture');
+        // Périmètre de l'utilisateur : la liste ne propose que des reçus qu'il peut ouvrir.
+        $query = Payment::with('facture')->visibleTo(auth()->user());
 
         // Filtre par facture
         if ($request->filled('facture_id')) {
@@ -139,7 +140,9 @@ class PaymentController extends Controller
 
         $dataTable = $query->orderBy('created_at', 'desc')->get();
 
-        $factures = Facture::all();
+        $factures = auth()->user()->isStoreScoped()
+            ? Facture::whereIn('store_id', auth()->user()->accessibleStoreIds())->get()
+            : Facture::all();
 
         // Passer les dates pour pré-remplir les champs
         $startDate = $startDate ? $startDate->toDateString() : null;
@@ -151,7 +154,9 @@ class PaymentController extends Controller
     protected function getFilteredPayments($request)
     {
         $query = Payment::join('factures', 'payments.facture_id', '=', 'factures.id')
-            ->select('payments.*', 'factures.numero_facture as numeroFacture');
+            ->select('payments.*', 'factures.numero_facture as numeroFacture')
+            // Exports PDF / Excel : même périmètre que la liste.
+            ->when(auth()->user()->isStoreScoped(), fn ($q) => $q->whereIn('factures.store_id', auth()->user()->accessibleStoreIds()));
 
         if ($request->filled('facture_id')) {
             $query->where('payments.facture_id', $request->facture_id);
@@ -247,7 +252,7 @@ class PaymentController extends Controller
     public function add($mark)
     {
         $customer = Customer::where('mark', $mark)->first();
-        $dataTable = TransactionFacture::where('customer_id', $customer->id)->get();
+        $dataTable = TransactionFacture::where('customer_id', $customer->id)->visibleTo(auth()->user())->get();
         $balanceQuery = Facture::where('customer_id', $customer->id)
             ->where('statut', '!=', 'payé');
         if (auth()->user()->isStoreScoped()) {
@@ -260,14 +265,31 @@ class PaymentController extends Controller
         return view('customers.add', compact('customer', 'dataTable', 'balanceDue'));
     }
 
+    /**
+     * Facture du périmètre de l'utilisateur : une vue globale voit tout (y
+     * compris d'anciennes factures sans magasin), un employé rattaché à un
+     * magasin seulement les factures de son périmètre.
+     */
+    private function autoriserFacture(Facture $facture): void
+    {
+        $user = auth()->user();
+        abort_unless(
+            $user && (! $user->isStoreScoped() || $user->canAccessStore($facture->store_id)),
+            403,
+            "Cette facture appartient à un autre magasin."
+        );
+    }
+
     public function creation($id){
-        $facture = Facture::find($id);
+        $facture = Facture::findOrFail($id);
+        $this->autoriserFacture($facture);
         // dd($depot);
         return view('factures.addPayment', compact('facture'));
     }
 
     public function voir($id){
-        $facture = Facture::find($id);
+        $facture = Facture::findOrFail($id);
+        $this->autoriserFacture($facture);
         // dd($depot);
         return view('factures.showPayment', compact('facture'));
     }
@@ -285,7 +307,7 @@ class PaymentController extends Controller
         $validator = Validator::make($request->all(), [
             'paid_by' => 'required',
             'versement' => 'required|numeric|min:0',
-            'note' => 'nullable|string',
+            'note' => 'nullable|string|max:500',
         ], [
             'paid_by.required' => 'Veuillez sélectionner le moyen de paiement',
             'versement.required' => 'Veuillez entrer un montant, à la rigueur 0',
@@ -317,9 +339,13 @@ class PaymentController extends Controller
             }
 
             // Get unpaid invoices for this customer, ordered by creation date
+            // Plus ancienne d'abord ; à seconde égale, l'ordre de création (id)
+            // départage — sans lui, deux factures de la même seconde étaient
+            // réglées dans un ordre aléatoire.
             $unpaidQuery = Facture::where('customer_id', $customer->id)
                                     ->where('statut', '!=', 'payé')
-                ->orderBy('created_at', 'asc');
+                ->orderBy('created_at', 'asc')
+                ->orderBy('id', 'asc');
             if ($storeId) {
                 $unpaidQuery->where('store_id', $storeId);
             }
@@ -337,6 +363,17 @@ class PaymentController extends Controller
                 $remainingPayment = $versement;
                 $nextReceiptId = (Payment::max('id') ?? 0) + 1;
                 $lastPaidInvoiceNumber = null;
+
+                // Le versement est enregistré d'abord : chaque paiement par facture
+                // lui est rattaché, pour que le reçu liste les factures réglées.
+                $transaction = TransactionFacture::create([
+                    'customer_id' => $customer->id,
+                    'versement' => $versement,
+                    'balance' => $customer->balance, // solde AVANT le versement
+                    'note' => $request->note,
+                    'paid_by' => $request->paid_by,
+                    'receipt_number' => generateReceiptNumber('RCC', (TransactionFacture::max('id') ?? 0) + 1),
+                ]);
 
                 foreach ($unpaidInvoices as $invoice) {
                     if ($remainingPayment <= 0) {
@@ -364,6 +401,7 @@ class PaymentController extends Controller
 
                     Payment::create([
                         'facture_id' => $invoice->id,
+                        'transaction_facture_id' => $transaction->id,
                         'versement' => $amountToApply,
                         'paid_by' => $request->paid_by,
                         'note' => $request->note,
@@ -383,19 +421,10 @@ class PaymentController extends Controller
                     // Deduct from remaining payment
                     $remainingPayment -= $amountToApply;
                 }
-                // Record the transaction
-                $transactionReceiptNumber = generateReceiptNumber('RCC', (TransactionFacture::max('id') ?? 0) + 1);
-                TransactionFacture::create([
-                    'customer_id' => $customer->id,
-                    'versement' => $versement,
-                    'balance' => $customer->balance,
-                    'note' => $request->note,
-                    'paid_by' => $request->paid_by,
-                    'receipt_number' => $transactionReceiptNumber,
-                ]);
-
-                // Update customer's overall balance
+                // Solde du client recalculé depuis ses factures, puis inscrit sur
+                // le versement : c'est ce qu'il reste à payer après ce reçu.
                 $customer->recalculerCompteurs();
+                $transaction->update(['balance_apres' => $customer->balance]);
 
                 return [$remainingPayment, $lastPaidInvoiceNumber];
             });
@@ -428,12 +457,13 @@ class PaymentController extends Controller
      */
     public function store(Request $request)
     {
-        $facture = Facture::find($request->facture_id); // ou récupère la facture selon ta logique
-      
+        $facture = Facture::findOrFail($request->facture_id);
+        $this->autoriserFacture($facture);
+
         $validator = Validator::make($request->all(), [
             'paid_by' => 'required',
             'versement' => 'required|numeric|min:0.01|max:' . $facture->reste,
-            'note' => 'nullable|string',
+            'note' => 'nullable|string|max:500',
         ], [
             'paid_by.required' => 'Veuillez sélectionner le moyen de paiement',
             'versement.required' => 'Veuillez entrer un montant, à la rigueur 0',

@@ -61,6 +61,7 @@ class PaymentControllerTest extends TestCase
         Schema::create('payments', function ($table) {
             $table->id();
             $table->unsignedBigInteger('facture_id');
+            $table->unsignedBigInteger('transaction_facture_id')->nullable();
             $table->string('receipt_number')->nullable()->unique();
             $table->decimal('versement', 15, 2);
             $table->decimal('total_paye', 15, 2);
@@ -77,6 +78,7 @@ class PaymentControllerTest extends TestCase
             $table->string('paid_by')->nullable();
             $table->decimal('versement', 15, 2);
             $table->decimal('balance', 15, 2);
+            $table->decimal('balance_apres', 15, 2)->nullable();
             $table->text('note')->nullable();
             $table->timestamps();
         });
@@ -154,6 +156,11 @@ class PaymentControllerTest extends TestCase
 
         $this->assertEquals(2, Payment::count());
         $this->assertEquals(1, TransactionFacture::count());
+        // Reçu de transaction : solde avant et après, paiements rattachés.
+        $transaction = TransactionFacture::first();
+        $this->assertEquals(15000, $transaction->solde_avant);
+        $this->assertEquals(3000, $transaction->solde_apres);
+        $this->assertEquals(2, Payment::where('transaction_facture_id', $transaction->id)->count());
 
         $customer->refresh();
         $this->assertEquals(3000, (float) $customer->balance); // 15000 - 12000

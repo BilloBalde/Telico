@@ -74,9 +74,15 @@
                                     <span>Montant reçu:</span>
                                     <span>{{ numberDelimiter($transaction->versement) }} FG</span>
                                 </div>
+                                {{-- La colonne `balance` est le solde AVANT le versement ; le reçu
+                                     l'affichait comme « balance restante ». --}}
                                 <div class="details-row">
-                                    <span>Balance restante:</span>
-                                    <span>{{ numberDelimiter($transaction->balance) }} FG</span>
+                                    <span>Solde avant versement:</span>
+                                    <span>{{ numberDelimiter($transaction->solde_avant) }} FG</span>
+                                </div>
+                                <div class="details-row">
+                                    <span><strong>Reste à payer après ce versement:</strong></span>
+                                    <span><strong>{{ numberDelimiter($transaction->solde_apres) }} FG</strong></span>
                                 </div>
                                 <div class="details-row">
                                     <span>Caissier:</span>
@@ -98,6 +104,30 @@
                                     </tr>
                                 </tbody>
                             </table>
+
+                            @if ($transaction->payments->isNotEmpty())
+                                <!-- Factures réglées par ce versement (de la plus ancienne à la plus récente) -->
+                                <table class="invoice-table">
+                                    <thead>
+                                        <tr>
+                                            <th>FACTURE</th>
+                                            <th>ARTICLES</th>
+                                            <th>MONTANT AFFECTÉ</th>
+                                            <th>RESTE SUR LA FACTURE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($transaction->payments->sortBy('id') as $paiement)
+                                        <tr>
+                                            <td>{{ $paiement->facture?->numero_facture ?? '—' }}</td>
+                                            <td>{{ $paiement->facture?->quantite_resumee ?? '—' }}</td>
+                                            <td>{{ numberDelimiter($paiement->versement) }} FG</td>
+                                            <td>{{ (float) $paiement->reste > 0 ? numberDelimiter($paiement->reste) . ' FG' : 'Soldée' }}</td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            @endif
 
                             <div class="amount-in-words">
                                 <strong>Montant en lettres:</strong><br>
@@ -206,15 +236,37 @@
                 if (pageHeader) pageHeader.style.display = 'none';
 
                 setTimeout(function() {
+                    // Une page A4 (marges de 8 mm) contient un contenu dont la hauteur
+                    // vaut au plus 281/194 de sa largeur. Avec la liste des factures
+                    // réglées, le reçu peut dépasser : légèrement → mise en page élargie
+                    // pour tenir sur une page ; beaucoup → plusieurs pages. Rien n'est coupé.
+                    const capacite = 281 / 194;
+                    let largeurMm = 190;
+                    let unePage = true;
+                    for (let essai = 0; essai < 4; essai++) {
+                        const ratio = clonedElement.scrollHeight / clonedElement.scrollWidth;
+                        if (ratio <= capacite) break;
+                        const nouvelle = largeurMm * (ratio / capacite) * 1.02;
+                        if (nouvelle > 190 * 1.3) { unePage = false; break; }
+                        largeurMm = nouvelle;
+                        pdfContainer.style.width = pdfContainer.style.maxWidth = (largeurMm + 20) + 'mm';
+                        clonedElement.style.width = clonedElement.style.maxWidth = largeurMm + 'mm';
+                    }
+                    if (!unePage) {
+                        pdfContainer.style.width = pdfContainer.style.maxWidth = '210mm';
+                        clonedElement.style.width = '100%';
+                        clonedElement.style.maxWidth = '190mm';
+                    }
+
                     const opt = {
                         margin: [8, 8, 8, 8],
                         filename: filename,
                         enableLinks: false,
-                        image: { 
-                            type: 'jpeg', 
-                            quality: 0.98 
+                        image: {
+                            type: 'jpeg',
+                            quality: 0.98
                         },
-                        html2canvas: { 
+                        html2canvas: {
                             scale: 1.5,
                             useCORS: true,
                             letterRendering: true,
@@ -226,15 +278,19 @@
                             windowWidth: clonedElement.scrollWidth,
                             windowHeight: clonedElement.scrollHeight
                         },
-                        jsPDF: { 
-                            unit: 'mm', 
+                        jsPDF: {
+                            unit: 'mm',
                             format: 'a4',
                             orientation: 'portrait',
                             compress: true
                         },
-                        pagebreak: { 
+                        pagebreak: unePage ? {
                             mode: ['avoid-all'],
                             avoid: '.receipt-invoice-wrapper, .invoice-title, .invoice-number-section, .client-info-box, .invoice-table, .amount-in-words, .signature-section, .company-info'
+                        } : {
+                            // Reçu long : coupure entre les lignes, jamais au milieu d'une ligne.
+                            mode: ['css', 'legacy'],
+                            avoid: ['tr', '.amount-in-words', '.signature-section', '.company-info']
                         }
                     };
 
@@ -244,9 +300,13 @@
                     btn.disabled = true;
 
                     html2pdf().set(opt).from(clonedElement).toPdf().get('pdf').then(function(pdf) {
-                        const totalPages = pdf.internal.getNumberOfPages();
-                        for (let i = totalPages; i > 1; i--) {
-                            pdf.deletePage(i);
+                        // Pages en trop supprimées seulement quand le reçu tient sur une
+                        // page (page blanche finale) : sinon le reçu serait tronqué.
+                        if (unePage) {
+                            const totalPages = pdf.internal.getNumberOfPages();
+                            for (let i = totalPages; i > 1; i--) {
+                                pdf.deletePage(i);
+                            }
                         }
                         pdf.save(filename);
                         btn.innerHTML = originalText;

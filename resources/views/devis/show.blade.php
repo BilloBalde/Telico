@@ -260,7 +260,7 @@
                                                 <br><small class="text-muted">SKU: {{ $line->product->sku }}</small>
                                             @endif
                                         </td>
-                                        <td class="text-center">{{ $line->quantity }}</td>
+                                        <td class="text-center">{{ $line->quantite_affichee }}</td>
                                         <td class="text-right">{{ number_format($line->unit_price, 0, ',', ' ') }} FG</td>
                                         <td class="text-right"><strong>{{ number_format($line->total_price, 0, ',', ' ') }} FG</strong></td>
                                     </tr>

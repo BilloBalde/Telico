@@ -208,6 +208,7 @@
         @media (prefers-reduced-motion: reduce) {
             .prod-card, .rayon, .prod-img img { transition: none; }
         }
+            .prod-unite { font-size: .78rem; color: var(--ink-muted, #66695A); margin-left: -4px; }
     </style>
 </head>
 <body>
@@ -391,7 +392,7 @@
                             <button type="button" class="qty-btn" onclick="changeQty(this,1)" aria-label="Augmenter la quantité">+</button>
                         </div>
                         <div class="prod-price-row">
-                            <span class="prod-price" data-computed-price>{{ number_format($p['price'], 0, ',', ' ') }} GNF</span>
+                            <span class="prod-price" data-computed-price>{{ number_format($p['price'], 0, ',', ' ') }} GNF</span><span class="prod-unite">/ {{ $p['unite'] ?? 'pièce' }}</span>
                             @if($p['old_price'])
                                 <span class="prod-price-old">{{ number_format($p['old_price'], 0, ',', ' ') }} GNF</span>
                             @endif
@@ -611,7 +612,7 @@
                         <button type="button" class="qty-btn" onclick="changeQty(this,1)" aria-label="Augmenter la quantité">+</button>
                     </div>
                     <div class="prod-price-row">
-                        <span class="prod-price" data-computed-price>${Number(p.price).toLocaleString('fr-FR')} GNF</span>
+                        <span class="prod-price" data-computed-price>${Number(p.price).toLocaleString('fr-FR')} GNF</span><span class="prod-unite">/ ${p.unite || 'pièce'}</span>
                         ${oldHTML}
                     </div>
                     <div class="prod-btns">

@@ -62,7 +62,9 @@ class ProductController extends Controller
     public function fetchProductDetails(Request $request)
     {
         $productName = $request->query('productName');
-        $product = Product::with('category')->where('libelle', 'like', '%' . $productName . '%')->first();
+        // Libellé exact d'abord : c'est ce produit-là que la facture utilisera.
+        $product = Product::with('category')->where('libelle', $productName)->first()
+            ?? ($request->boolean('exact') ? null : Product::with('category')->where('libelle', 'like', '%' . $productName . '%')->first());
 
         if ($product) {
             return response()->json([
@@ -70,7 +72,11 @@ class ProductController extends Controller
                 'product' => [
                     'id' => $product->id,
                     'libelle' => $product->libelle,
-                    'qtityCtn' => $product->qtityCtn,
+                    'unite' => $product->unite_libelle,
+                    'price' => (float) $product->price,
+                    // Plancher de vente (prix minimum ou prix de revient), pour le signaler à la saisie.
+                    'plancher' => $product->plancherDeVente()[0],
+                    'plancher_origine' => $product->plancherDeVente()[1] === 'minimum' ? 'prix de vente minimum' : 'prix de revient',
                     'image' => $product->image,
                     'category' => [
                         'id' => $product->category?->id,
@@ -85,7 +91,7 @@ class ProductController extends Controller
             'message' => 'Product not found'
         ]);
     }
-    
+
     public function fetchProductDetailsSuggestion(Request $request)
     {
         $productName = $request->query('productName');
@@ -93,7 +99,8 @@ class ProductController extends Controller
         if ($request->boolean('suggestions')) {
             $suggestions = Product::where('libelle', 'like', '%' . $productName . '%')
                 ->limit(10)
-                ->get(['id', 'libelle']);
+                ->get(['id', 'libelle', 'unite', 'pcs_par_carton', 'pcs_par_paquet', 'dimension_rouleau'])
+                ->map(fn ($p) => ['id' => $p->id, 'libelle' => $p->libelle, 'unite' => $p->unite_libelle]);
 
             return response()->json([
                 'success' => true,
@@ -123,49 +130,73 @@ class ProductController extends Controller
         return view('products.create', compact('categories', 'stores'));
     }
 
-    /** Règles des unités de vente, communes à la création et à la modification. */
+    /**
+     * Unité unique du produit, commune à la création et à la modification :
+     * le nombre de pièces est obligatoire pour un carton ou un paquet, la
+     * dimension pour un rouleau.
+     */
     private function reglesUnites(): array
     {
-        $coche = fn (string $code) => \Illuminate\Validation\Rule::requiredIf(
-            fn () => in_array($code, (array) request()->input('unites_vente', []), true)
-        );
+        $si = fn (string $code) => \Illuminate\Validation\Rule::requiredIf(fn () => request()->input('unite') === $code);
 
         return [
-            'unites_vente'      => ['required', 'array', 'min:1', function ($attr, $valeur, $echec) {
-                if (in_array('rouleau', (array) $valeur, true) && count((array) $valeur) > 1) {
-                    $echec('Un produit vendu au rouleau a son stock compté en rouleaux : il ne peut pas être vendu aussi à la pièce, à la douzaine, au carton ou au paquet.');
-                }
-            }],
-            'unites_vente.*'    => 'in:'.implode(',', array_keys(Product::UNITES)),
-            'pcs_par_carton'    => ['nullable', $coche('carton'), 'integer', 'min:2'],
-            'pcs_par_paquet'    => ['nullable', $coche('paquet'), 'integer', 'min:2'],
-            'dimension_rouleau' => ['nullable', $coche('rouleau'), 'string', 'max:60'],
+            'unite'             => 'required|in:'.implode(',', array_keys(Product::UNITES)),
+            'pcs_par_carton'    => ['nullable', $si('carton'), 'integer', 'min:2'],
+            'pcs_par_paquet'    => ['nullable', $si('paquet'), 'integer', 'min:2'],
+            'dimension_rouleau' => ['nullable', $si('rouleau'), 'string', 'max:60'],
         ];
     }
 
     private function messagesUnites(): array
     {
         return [
-            'unites_vente.required'      => 'Choisissez au moins une unité de vente.',
-            'pcs_par_carton.required' => 'Indiquez le nombre de pièces par carton.',
+            'unite.required'             => "Choisissez l'unité du produit.",
+            'unite.in'                   => 'Unité inconnue.',
+            'pcs_par_carton.required'    => 'Indiquez le nombre de pièces par carton.',
             'pcs_par_carton.min'         => 'Un carton contient au moins 2 pièces.',
-            'pcs_par_paquet.required' => 'Indiquez le nombre de pièces par paquet.',
+            'pcs_par_paquet.required'    => 'Indiquez le nombre de pièces par paquet.',
             'pcs_par_paquet.min'         => 'Un paquet contient au moins 2 pièces.',
             'dimension_rouleau.required' => 'Indiquez la dimension du rouleau.',
         ];
     }
 
-    /** Valeurs à enregistrer : les champs d'une unité décochée sont vidés. */
+    /** Valeurs à enregistrer : seul le détail de l'unité choisie est gardé. */
     private function valeursUnites(Request $request): array
     {
-        $unites = array_values(array_intersect(array_keys(Product::UNITES), (array) $request->input('unites_vente', ['pcs'])));
+        $unite = $request->input('unite', 'pcs');
 
         return [
-            'unites_vente'      => $unites ?: ['pcs'],
-            'pcs_par_carton'    => in_array('carton', $unites, true) ? (int) $request->pcs_par_carton : null,
-            'pcs_par_paquet'    => in_array('paquet', $unites, true) ? (int) $request->pcs_par_paquet : null,
-            'dimension_rouleau' => in_array('rouleau', $unites, true) ? trim((string) $request->dimension_rouleau) : null,
+            'unite'             => $unite,
+            'pcs_par_carton'    => $unite === 'carton' ? (int) $request->pcs_par_carton : null,
+            'pcs_par_paquet'    => $unite === 'paquet' ? (int) $request->pcs_par_paquet : null,
+            'dimension_rouleau' => $unite === 'rouleau' ? trim((string) $request->dimension_rouleau) : null,
         ];
+    }
+
+    /**
+     * Prix de vente minimum (facultatif, par unité du produit) : strictement
+     * au-dessus du prix de revient et au plus égal au prix de vente, sinon le
+     * prix proposé à la caisse serait lui-même refusé.
+     */
+    private function regleMinimum(Request $request, float $prixVente): array
+    {
+        return ['nullable', 'numeric', 'min:0', function ($attr, $valeur, $echec) use ($request, $prixVente) {
+            if ($valeur === null || $valeur === '') {
+                return;
+            }
+            $fg = fn ($n) => number_format((float) $n, 0, ',', ' ');
+            $revient = (float) $request->input('price_sale');
+            if ($revient > 0 && (float) $valeur <= $revient) {
+                $echec('Le prix de vente minimum doit être strictement supérieur au prix de revient (' . $fg($revient) . ' FG).');
+            } elseif ($prixVente > 0 && (float) $valeur > $prixVente) {
+                $echec('Le prix de vente minimum ne peut pas dépasser le prix de vente (' . $fg($prixVente) . ' FG).');
+            }
+        }];
+    }
+
+    private function valeurMinimum(Request $request): ?float
+    {
+        return $request->filled('price_sale_minimum') ? round((float) $request->input('price_sale_minimum'), 2) : null;
     }
 
     public function validation(Request $request)
@@ -178,6 +209,7 @@ class ProductController extends Controller
             'sku' => 'required|string|max:225',
             'description' => 'required|string',
             'price_sale' => 'required|numeric|min:0',
+            'price_sale_minimum' => $this->regleMinimum($request, round((float) $request->input('price_sale') * 1.3, 2)),
             'stock_initial' => 'required|integer|min:0',
             'store_id' => 'required|exists:stores,id',
             'image' => 'image',
@@ -235,10 +267,14 @@ class ProductController extends Controller
             'libelle' => 'required|string|max:225',
             'sku' => 'required|string|max:225',
             'category_id' => 'required|exists:categories,id',
+            // Unité unique, mêmes règles que la fiche produit (pièces par
+            // carton ou par paquet, dimension du rouleau).
+            ...$this->reglesUnites(),
         ], [
             'libelle.required' => 'Le nom du produit est requis.',
             'sku.required' => 'Le SKU est requis.',
             'category_id.required' => 'La catégorie est requise.',
+            ...$this->messagesUnites(),
         ]);
 
         try {
@@ -246,13 +282,18 @@ class ProductController extends Controller
                 'libelle' => $request->libelle,
                 'sku' => $request->sku,
                 'description' => $request->libelle,
+                ...$this->valeursUnites($request),
             ]);
 
             $product->categories()->attach($request->category_id);
 
             return response()->json([
                 'success' => true,
-                'product' => ['id' => $product->id, 'libelle' => $product->libelle, 'sku' => $product->sku],
+                'product' => [
+                    'id' => $product->id, 'libelle' => $product->libelle, 'sku' => $product->sku,
+                    'unite' => $product->unite, 'unite_libelle' => $product->unite_libelle,
+                    'unite_pluriel' => Product::motUnite($product->unite, 2),
+                ],
             ]);
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -280,6 +321,7 @@ class ProductController extends Controller
                 'pcs' => $request->stock_initial, // stock global e-commerce, initialisé au stock du premier magasin
                 'price' => $price,
                 'price_sale' => $priceSale,
+                'price_sale_minimum' => $this->valeurMinimum($request),
                 // Sans upload, on stocke une valeur vide : les vues basculent alors
                 // sur leur visuel de repli. Pointer vers un "ib profile.jpg" qui
                 // n'existe pas produisait une image cassée sur chaque fiche.
@@ -319,7 +361,7 @@ class ProductController extends Controller
     public function show($id)
     {
         $product = Product::with('categories')->findOrFail($id);
-        
+
         return response()->json([
             'success' => true,
             'product' => [
@@ -379,6 +421,7 @@ class ProductController extends Controller
             'price'        => 'required|numeric',
             'stock_restant' => 'required|integer|min:0',
             'price_sale'   => 'nullable|numeric',
+            'price_sale_minimum' => $this->regleMinimum($request, (float) $request->input('price')),
             'image'        => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
             'store_id' => 'required|exists:stores,id',
             'is_promo' => 'nullable|boolean',
@@ -400,6 +443,7 @@ class ProductController extends Controller
             $product->fill($request->only([
                 'libelle', 'sku', 'description', 'price', 'price_sale',
             ]));
+            $product->price_sale_minimum = $this->valeurMinimum($request);
 
             $product->is_promo = $request->boolean('is_promo');
             $product->promo_percent = $request->promo_percent ?? null;

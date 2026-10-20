@@ -80,7 +80,7 @@
     </div>
 
     <div class="row">
-        @foreach ([['Ventes flash', $totals['nb']], ['Chiffre d\'affaires', numberDelimiter($totals['ca']).' FG'], ['Quantités vendues', number_format($totals['qty'], 0, ',', ' ')], ['Marge', numberDelimiter($totals['marge']).' FG']] as [$t, $v])
+        @foreach ([['Ventes flash', $totals['nb']], ['Chiffre d\'affaires', numberDelimiter($totals['ca']).' FG'], ['Quantités vendues', $totals['qty_unites']], ['Marge', numberDelimiter($totals['marge']).' FG']] as [$t, $v])
         <div class="col-lg-3 col-sm-6 d-flex">
             <div class="card flex-fill"><div class="card-body">
                 <div class="text-muted" style="font-size:12px;">{{ $t }}</div>
@@ -102,7 +102,7 @@
                             <td>{{ $userNames[$r->user_id] ?? 'Non renseigné' }}</td>
                             <td class="text-end">{{ $r->nb }}</td>
                             <td class="text-end">{{ numberDelimiter($r->ca) }}</td>
-                            <td class="text-end">{{ number_format($r->qty, 0, ',', ' ') }}</td>
+                            <td class="text-end">{{ $qtyVendeur[$r->user_id ?? ''] ?? '0' }}</td>
                             <td class="text-end">{{ numberDelimiter($r->marge) }}</td>
                         </tr>
                         @empty
@@ -123,7 +123,7 @@
                             <td>{{ $storeNames[$r->store_id]?->store_name ?? 'Emplacement #'.$r->store_id }} <small class="text-muted">({{ $storeNames[$r->store_id]?->type_label }})</small></td>
                             <td class="text-end">{{ $r->nb }}</td>
                             <td class="text-end">{{ numberDelimiter($r->ca) }}</td>
-                            <td class="text-end">{{ number_format($r->qty, 0, ',', ' ') }}</td>
+                            <td class="text-end">{{ $qtyStore[$r->store_id] ?? '0' }}</td>
                             <td class="text-end">{{ numberDelimiter($r->marge) }}</td>
                         </tr>
                         @empty
@@ -148,7 +148,7 @@
                         <td>{{ $s->user?->name ?? '—' }}</td>
                         <td>{{ $s->store?->store_name }}</td>
                         <td>{{ $s->product?->libelle }}@if ($s->is_third_party) <span class="badge bg-light text-dark" style="border:1px solid #C7A150;font-size:11px;">Vente tierce</span>@endif</td>
-                        <td class="text-end">{{ $s->quantity }}</td>
+                        <td class="text-end">{{ $s->quantite_affichee }}</td>
                         <td class="text-end">{{ numberDelimiter($s->prix) }}</td>
                         <td class="text-end">{{ numberDelimiter($s->prixTotal) }}</td>
                         <td>{{ $customers[$s->facture_customer_id] ?? '—' }}</td>

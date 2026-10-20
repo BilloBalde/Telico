@@ -16,12 +16,19 @@ class ExpenseController extends Controller
     }
 
     /**
-     * Vérifie si l'utilisateur est admin ou superuser.
+     * Vue globale (accès à tous les magasins) : même règle que le reste du
+     * logiciel. Un employé rattaché ne voit que les dépenses de son périmètre
+     * (son magasin et les entrepôts / stocks qui en dépendent).
      */
     private function isAdmin()
     {
         $user = auth()->user();
-        return $user && in_array((int) $user->role_id, [\App\Models\User::ROLE_ADMIN, \App\Models\User::ROLE_MANAGER]);
+        return $user && ! $user->isStoreScoped();
+    }
+
+    private function peutVoir($storeId): bool
+    {
+        return $this->isAdmin() || auth()->user()->canAccessStore($storeId);
     }
 
     /**
@@ -34,7 +41,7 @@ class ExpenseController extends Controller
 
         // 🔒 Restriction par magasin : si pas admin, on filtre par le store de l'utilisateur
         if (!$this->isAdmin()) {
-            $query->where('store_id', auth()->user()->store_id);
+            $query->whereIn('store_id', auth()->user()->accessibleStoreIds());
         }
 
         // Filtres de recherche
@@ -65,7 +72,7 @@ class ExpenseController extends Controller
     public function create()
     {
         $categories = ExpenseCategory::all();
-        $stores = $this->isAdmin() ? Store::all() : Store::where('id', auth()->user()->store_id)->get();
+        $stores = $this->isAdmin() ? Store::all() : Store::whereIn('id', auth()->user()->accessibleStoreIds())->get();
         $ref = "DEP" . Carbon::now()->format('Ym') . sprintf("%04d", Expense::count() + 1);
         return view('expenses.create', compact('categories', 'ref', 'stores'));
     }
@@ -77,7 +84,7 @@ class ExpenseController extends Controller
     {
         // 🔒 Un non-admin ne peut créer une dépense que pour sa propre boutique
         // (edit/update/destroy appliquaient déjà cette règle, pas store()).
-        if (! $this->isAdmin()) {
+        if (! $this->isAdmin() && ! auth()->user()->canAccessStore($request->input('store_id'))) {
             $request->merge(['store_id' => auth()->user()->store_id]);
         }
 
@@ -111,12 +118,12 @@ class ExpenseController extends Controller
     public function edit(Expense $expense)
     {
         // 🔒 Vérification : un non-admin ne peut modifier que ses propres dépenses (même store)
-        if (!$this->isAdmin() && $expense->store_id !== auth()->user()->store_id) {
+        if (! $this->peutVoir($expense->store_id)) {
             abort(403, 'Vous n\'êtes pas autorisé à modifier cette dépense.');
         }
 
         $categories = ExpenseCategory::all();
-        $stores = $this->isAdmin() ? Store::all() : Store::where('id', auth()->user()->store_id)->get();
+        $stores = $this->isAdmin() ? Store::all() : Store::whereIn('id', auth()->user()->accessibleStoreIds())->get();
         return view('expenses.create', compact('expense', 'categories', 'stores'));
     }
 
@@ -126,7 +133,7 @@ class ExpenseController extends Controller
     public function update(Request $request, Expense $expense)
     {
         // 🔒 Même vérification
-        if (!$this->isAdmin() && $expense->store_id !== auth()->user()->store_id) {
+        if (! $this->peutVoir($expense->store_id)) {
             abort(403);
         }
 
@@ -155,7 +162,7 @@ class ExpenseController extends Controller
     public function destroy(Expense $expense)
     {
         // 🔒 Même vérification
-        if (!$this->isAdmin() && $expense->store_id !== auth()->user()->store_id) {
+        if (! $this->peutVoir($expense->store_id)) {
             abort(403);
         }
 

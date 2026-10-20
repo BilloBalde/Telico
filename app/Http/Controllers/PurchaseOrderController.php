@@ -134,7 +134,7 @@ class PurchaseOrderController extends Controller
         $stores = Store::optionsFor(auth()->user());
         $suppliers = Partner::orderBy('name')->get();
         $funds = \App\Models\Fund::active()->orderBy('name')->get();
-        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku']);
+        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku', 'unite', 'pcs_par_carton', 'pcs_par_paquet', 'dimension_rouleau']);
         $currencies = CurrencySetting::whereNotNull('rate_to_gnf')->where('currencyCode', '!=', 'GNF')->get();
         $reference = $this->nextReference();
         // Pour les modales "Nouvelle boutique" / "Nouveau produit" du formulaire.
@@ -224,7 +224,7 @@ class PurchaseOrderController extends Controller
         $stores = Store::optionsFor(auth()->user());
         $suppliers = Partner::orderBy('name')->get();
         $funds = \App\Models\Fund::orderBy('name')->get();
-        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku']);
+        $products = Product::orderBy('libelle')->get(['id', 'libelle', 'sku', 'unite', 'pcs_par_carton', 'pcs_par_paquet', 'dimension_rouleau']);
         $currencies = CurrencySetting::whereNotNull('rate_to_gnf')->where('currencyCode', '!=', 'GNF')->get();
         // Pour les modales "Nouvelle boutique" / "Nouveau produit" du formulaire.
         $places = Place::all();

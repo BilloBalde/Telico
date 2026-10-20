@@ -124,9 +124,9 @@
                                                 <th>Produit</th>
                                                 <th>Image</th>
                                                 <th>Quantité</th>
-                                                <th>Packaging</th>
-                                                <th>Price Unit</th>
-                                                <th>Subtotal</th>
+                                                <th>Unité</th>
+                                                <th>Prix par unité</th>
+                                                <th>Sous-total</th>
                                                 <th>Actions</th>
                                             </tr>
                                         </thead>
@@ -135,11 +135,10 @@
                                         </tbody>
                                         <tfoot>
                                             <tr>
-                                                <th colspan="2" class="text-right"><strong>Total</strong></th>
-                                                <th></th>
-                                                <th></th>
-                                                <th id="totalPcs" class="text-right" style="font-weight:bold;">0</th>
+                                                <th colspan="3" class="text-right"><strong>Total</strong></th>
+                                                <th id="totalPcs" style="font-weight:bold;">0</th>
                                                 <input type="hidden" name="total_pcs" id="total_pcs" />
+                                                <th></th>
                                                 <th></th>
                                                 <th id="totalSubtotal" class="text-right" style="font-weight:bold;">0.00</th>
                                                 <input type="hidden" name="total_subtotal" id="total_subtotal" />
@@ -284,7 +283,7 @@
             document.getElementById('addCustomerForm').addEventListener('submit', function (e) {
                 e.preventDefault();
                 let formData = new FormData(this);
-                
+
                 const storeCustomerUrl = "{{ route('facturations.storeCustomer') }}";
                 fetch(storeCustomerUrl, {
                     method: 'POST',
@@ -361,6 +360,13 @@
                     }
                 });
 
+            // Nom saisi sans passer par une suggestion : on affiche quand même l'unité.
+            document.querySelector('#orderTable tbody').addEventListener('change', function (event) {
+                if (event.target.classList.contains('productName') && event.target.value.trim()) {
+                    fetchProductDetails(event.target.value.trim(), event.target.closest('tr'));
+                }
+            });
+
             function fetchProductSuggestions(query, input) {
                 fetch(`/fetch-product-details-suggestion?productName=${encodeURIComponent(query)}&suggestions=true`, {
                     method: 'GET',
@@ -397,15 +403,16 @@
                       list.style.boxShadow = '0 2px 15px rgba(0,0,0,0.2)';
                     suggestions.forEach(product => {
                         const li = document.createElement('li');
-                        li.textContent = product.libelle;
+                        // Unité du produit à côté du nom : « Ciment — Sac… », « Câble — Rouleau (100 m) ».
+                        li.textContent = product.libelle + (product.unite ? ' — ' + product.unite : '');
                         li.style.padding = '8px 12px';
                         li.style.cursor = 'pointer';
                                         li.style.borderBottom = '1px solid #eee';
-                                                
+
                                                 li.addEventListener('mouseover', () => {
                                                     li.style.backgroundColor = '#f5f5f5';
                                                 });
-                                                
+
                                                 li.addEventListener('mouseout', () => {
                                                     li.style.backgroundColor = '';
                                                 });
@@ -425,7 +432,7 @@
                     if (existing) existing.remove();
                 }
                 function fetchProductDetails(productName, row) {
-                    fetch(`/fetch-product-details?productName=${encodeURIComponent(productName)}`, {
+                    fetch(`/fetch-product-details?exact=1&productName=${encodeURIComponent(productName)}`, {
                         method: 'GET',
                         headers: {
                             'Accept': 'application/json',
@@ -437,6 +444,19 @@
                         if (data.success && data.product) {
                             const product = data.product;
                               row.querySelector('input[name*="[productName]"]').value = product.libelle || 'null';
+                              // Unité unique du produit : la quantité et le prix saisis sont dans cette unité.
+                              const uniteCell = row.querySelector('.unite-produit');
+                              if (uniteCell) uniteCell.textContent = product.unite || 'Pièce';
+                              // Prix de vente par unité proposé, modifiable.
+                              const prixInput = row.querySelector('.price');
+                              if (prixInput) {
+                                  prixInput.dataset.plancher = product.plancher || 0;
+                                  prixInput.dataset.origine = product.plancher_origine || '';
+                              }
+                              if (prixInput && !prixInput.value && product.price) {
+                                  prixInput.value = product.price;
+                              }
+                              updateSubtotal(row);
 
                               const imageInput = row.querySelector('input[name*="[image]"]');
                               const imagePreview = row.querySelector('.image-preview');
@@ -455,6 +475,13 @@
 
                               // Optionally, set the input file to the default value (if required)
                               imageInput.value = ''; // Clear the input file value if needed
+                            } else {
+                              // Nom inconnu : la facture créera un nouveau produit, vendu à la pièce.
+                              // (Seulement si le nom n'a pas changé entre-temps, par un clic sur une suggestion.)
+                              const uniteCell = row.querySelector('.unite-produit');
+                              if (uniteCell && row.querySelector('.productName').value.trim() === productName) {
+                                  uniteCell.textContent = 'Pièce (nouveau produit)';
+                              }
                             }
                         })
                         .catch(error => console.error('Error fetching product details:', error));
@@ -473,7 +500,7 @@
                 // Trigger update of totals
                 updateTotal();
             });
-            
+
             updateTotal();
             let rowIndex = document.querySelectorAll('#orderTable tbody tr').length;
 
@@ -569,8 +596,8 @@
                         <input type="file" name="products[${rowIndex}][image]" class="form-control image-input" accept="image/*">
                         <img class="image-preview" style="max-width: 80px; max-height: 80px; display: none; margin-top: 5px;">
                     </td>
-                    <td><input type="text" name="products[${rowIndex}][cartons]" class="form-control cartons"></td>
-                    <td><input type="text" name="products[${rowIndex}][qty_per_ctn]" class="form-control qty_per_ctn" value="1" readonly></td>
+                    <td><input type="text" name="products[${rowIndex}][cartons]" class="form-control cartons" placeholder="Qté"></td>
+                    <td><input type="hidden" name="products[${rowIndex}][qty_per_ctn]" class="qty_per_ctn" value="1"><span class="unite-produit text-muted">—</span></td>
                     <td><input type="text" name="products[${rowIndex}][price]" class="form-control price" required></td>
                     <td><input type="text" name="products[${rowIndex}][subtotal]" class="form-control subtotal" readonly></td>
                     <td><a href="javascript:void(0);" class="btn btn-danger removeRowButton"><i class="fas fa-trash-alt"></i></a></td>
@@ -600,7 +627,28 @@
             });
 
             // Function to calculate subtotal for a row
+            // Plancher de vente (prix minimum de la fiche ou prix de revient) :
+            // même règle que le serveur, qui refuse de toute façon l'enregistrement.
+            function signalerPlancher(input, plancher, origine) {
+                if (!input) return;
+                let aide = input.parentElement.querySelector('.plancher-aide');
+                if (!aide) {
+                    aide = document.createElement('small');
+                    aide.className = 'plancher-aide d-block';
+                    input.insertAdjacentElement('afterend', aide);
+                }
+                const prix = parseFloat(input.value) || 0;
+                const trop = plancher > 0 && prix > 0 && prix < plancher;
+                input.classList.toggle('is-invalid', trop);
+                aide.style.color = trop ? '#d92d20' : '#66695A';
+                aide.textContent = plancher > 0
+                    ? (trop ? 'Trop bas : minimum ' : 'Minimum : ') + Number(plancher).toLocaleString('fr-FR') + ' GNF (' + origine + ')'
+                    : '';
+            }
+
             function updateSubtotal(row) {
+                const prixChamp = row.querySelector('.price');
+                signalerPlancher(prixChamp, parseFloat(prixChamp?.dataset.plancher) || 0, prixChamp?.dataset.origine || '');
                 const cartons = parseFloat(row.querySelector('.cartons').value) || 0;
                 const qtyPerCtn = parseFloat(row.querySelector('.qty_per_ctn').value) || 0;
                 const price = parseFloat(row.querySelector('.price').value) || 0;
@@ -631,13 +679,13 @@
                 document.getElementById('total_subtotal').value = totalSubtotal.toFixed(2);
             }
 
-            
+
             $(document).ready(function () {
                 $('#commandForm').on('submit', function (e) {
                     e.preventDefault(); // Prevent page reload
 
                     let formData = new FormData(this);
-                    
+
                     const storeCommandeUrl = "{{ route('facturations.store') }}";
                                      // cache the button
                      const $btn = $('#submitFormbutton');

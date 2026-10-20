@@ -13,7 +13,7 @@
         }
         h1 {
             color: #333;
-            border-bottom: 2px solid #4CAF50;
+            border-bottom: 2px solid #3E4C21;
             padding-bottom: 10px;
             text-align: center;
         }
@@ -31,7 +31,7 @@
             margin-top: 20px;
         }
         th {
-            background-color: #4CAF50;
+            background-color: #3E4C21;
             color: white;
             padding: 12px 8px;
             text-align: left;
@@ -73,7 +73,7 @@
             width: 200px;
             margin: 20px auto;
             padding: 12px 20px;
-            background-color: #4CAF50;
+            background-color: #3E4C21;
             color: white;
             border: none;
             border-radius: 5px;
@@ -145,8 +145,8 @@
                 <td><strong>{{ $product->libelle }}</strong></td>
                 <td>{{ $product->sku ?? 'N/A' }}</td>
                 <td>{{ $categories ?: 'N/A' }}</td>
-                <td class="text-center">{{ $quantity }}</td>
-                <td class="text-right">{{ number_format($product->price ?? 0, 0, ',', ' ') }} F</td>
+                <td class="text-center">{{ $product->quantiteAvecUnite($quantity) }}</td>
+                <td class="text-right">{{ number_format($product->price ?? 0, 0, ',', ' ') }} F <small>/ {{ \App\Models\Product::motUnite($product->unite) }}</small></td>
                 <td class="text-center">
                     @if($product->image)
                         <img src="{{ asset('products/' . $product->image) }}" 

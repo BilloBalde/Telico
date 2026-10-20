@@ -179,15 +179,12 @@
                     <p class="text-gray-600 text-sm leading-relaxed mb-5">{{ $product->description }}</p>
                     @endif
 
-                    {{-- Conditionnements proposés (carton de 24, paquet de 10, rouleau de 100 m…).
-                         products.pcs est le stock global, pas un nombre de pièces par carton. --}}
-                    @php $conditionnements = collect($product->unitesDisponibles())->except('pcs'); @endphp
-                    @if($conditionnements->isNotEmpty())
+                    {{-- Unité de vente du produit (carton de 24, rouleau de 100 m…) :
+                         la quantité commandée et le prix sont dans cette unité. --}}
                     <div class="flex items-center gap-2 mb-2 text-sm text-gray-500">
                         <i class="fas fa-box text-brand-400"></i>
-                        <span>Vendu aussi par : <strong class="text-gray-700">{{ $conditionnements->pluck('libelle')->implode(', ') }}</strong></span>
+                        <span>Vendu par : <strong class="text-gray-700">{{ $product->unite_libelle }}</strong></span>
                     </div>
-                    @endif
                 </div>
 
                 {{-- Prix + Bouton --}}
@@ -214,7 +211,7 @@
                     @endif
 
                     <div class="prod-qty prod-qty--lg">
-                        <span class="qty-label">Quantité</span>
+                        <span class="qty-label">Quantité ({{ \App\Models\Product::motUnite($product->unite, 2) }})</span>
                         <button type="button" class="qty-btn" onclick="changeDetailQty(-1)" aria-label="Diminuer la quantité">−</button>
                         <input type="number" class="qty-input" min="1" value="1" id="detail-qty" data-base-price="{{ $basePrice }}" onchange="updateDetailPrice()">
                         <button type="button" class="qty-btn" onclick="changeDetailQty(1)" aria-label="Augmenter la quantité">+</button>
@@ -222,6 +219,7 @@
 
                     <div class="flex items-baseline gap-3 mb-3">
                         <span class="price-main" id="detail-price">{{ number_format($basePrice, 0, ',', ' ') }} GNF</span>
+                        <span class="text-sm text-gray-500">/ {{ \App\Models\Product::motUnite($product->unite) }}</span>
                         @if($product->effective_promo_price)
                             <span class="price-old">{{ number_format($product->price, 0, ',', ' ') }} GNF</span>
                             @php $disc = round((1 - $product->effective_promo_price / $product->price) * 100); @endphp
@@ -230,7 +228,7 @@
                     </div>
 
                     <div class="flex items-center justify-between px-4 py-3 mb-6 rounded-xl" style="background:var(--brand-50);border:1px solid var(--brand-100);">
-                        <span class="text-sm text-gray-600">Total pour <strong id="detail-total-qty">1</strong> article(s)</span>
+                        <span class="text-sm text-gray-600">Total pour <strong id="detail-total-qty">1</strong> <span id="detail-total-unite" data-singulier="{{ \App\Models\Product::motUnite($product->unite) }}" data-pluriel="{{ \App\Models\Product::motUnite($product->unite, 2) }}">{{ \App\Models\Product::motUnite($product->unite) }}</span></span>
                         <span class="text-lg font-bold" style="color:var(--ink);" id="detail-total">{{ number_format($basePrice, 0, ',', ' ') }} GNF</span>
                     </div>
 
@@ -322,6 +320,9 @@ function updateDetailPrice() {
     const totalQtyEl = document.getElementById('detail-total-qty');
     if (totalEl) totalEl.textContent = new Intl.NumberFormat('fr-FR').format(unitPrice * qty) + ' GNF';
     if (totalQtyEl) totalQtyEl.textContent = qty;
+    // « 1 douzaine », « 3 douzaines »
+    const uniteEl = document.getElementById('detail-total-unite');
+    if (uniteEl) uniteEl.textContent = qty > 1 ? uniteEl.dataset.pluriel : uniteEl.dataset.singulier;
 }
 
 function addToCart(id, btn, quantity = 1) {

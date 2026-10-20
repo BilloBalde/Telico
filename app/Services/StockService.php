@@ -252,7 +252,10 @@ class StockService
 
     private function shortageMessage(int $storeId, int $productId, int $available, int $requested, ?int $fundId = null): string
     {
-        $product = DB::table('products')->where('id', $productId)->value('libelle') ?? ('Produit #' . $productId);
+        $fiche = DB::table('products')->where('id', $productId)->first(['libelle', 'unite']);
+        $product = $fiche->libelle ?? ('Produit #' . $productId);
+        // Quantités dans l'unité du produit : « Disponible : 10 cartons ».
+        $unite = $fiche->unite ?? 'pcs';
         $store = DB::table('stores')->where('id', $storeId)->value('store_name') ?? ('Emplacement #' . $storeId);
         if ($fundId) {
             $store .= ' (' . (DB::table('funds')->where('id', $fundId)->value('name') ?? 'fonds #' . $fundId) . ')';
@@ -262,8 +265,8 @@ class StockService
             'Stock insuffisant pour %s à %s. Disponible : %s. Demandé : %s.',
             $product,
             $store,
-            number_format($available, 0, ',', ' '),
-            number_format($requested, 0, ',', ' ')
+            \App\Models\Product::quantiteEnUnite($available, $unite),
+            \App\Models\Product::quantiteEnUnite($requested, $unite)
         );
     }
 

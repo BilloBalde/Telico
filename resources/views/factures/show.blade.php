@@ -334,6 +334,7 @@
 
         /* Styles pour l'impression */
         @media print {
+            .mention-interne { display: none !important; }
             #global-loader,
             .header,
             .sidebar,
@@ -477,7 +478,8 @@
                                         @foreach ($invoice as $item)
                                             <tr>
                                                 <td>{{ $loop->iteration }}</td>
-                                                <td>{{ $item->produit }}</td>
+                                                {{-- Mention interne : visible à l'écran, jamais sur la facture imprimée pour le client. --}}
+                                                <td>{{ $item->produit }}@if ($item->is_third_party)<small class="mention-interne" data-html2canvas-ignore="true" style="display:block;color:#8A6A24;"><i class="fa fa-handshake"></i> Pris chez {{ $item->partner?->name ?? 'un partenaire' }} — payé {{ numberDelimiter($item->purchase_price_from_partner) }} FG / {{ $item->mot_unite }}</small>@endif</td>
                                                 <td>{{ $item->quantite_affichee }}</td>
                                                 <td>{{ numberDelimiter($item->prix_affiche) }} FG</td>
                                                 <td>{{ numberDelimiter($item->prixTotal) }} FG</td>
@@ -550,6 +552,15 @@
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Génération...';
                 btn.disabled = true;
 
+                // Facture remise au client : les mentions internes (produit pris
+                // chez un partenaire, prix payé) ne doivent jamais apparaître dans
+                // le PDF. Le PDF est fabriqué à partir de l'écran : on les retire
+                // le temps de la génération, puis on les remet.
+                const mentions = [...element.querySelectorAll('.mention-interne')];
+                const affichages = mentions.map(m => m.style.getPropertyValue('display'));
+                mentions.forEach(m => m.style.setProperty('display', 'none', 'important'));
+                const remettreMentions = () => mentions.forEach((m, i) => m.style.setProperty('display', affichages[i]));
+
                 const opt = {
                     margin: [10, 10, 15, 10],
                     filename: 'Facture_{{ $facture }}.pdf',
@@ -574,10 +585,12 @@
                     .from(element)
                     .save()
                     .then(() => {
+                        remettreMentions();
                         btn.innerHTML = originalText;
                         btn.disabled = false;
                     })
                     .catch(() => {
+                        remettreMentions();
                         btn.innerHTML = originalText;
                         btn.disabled = false;
                     });

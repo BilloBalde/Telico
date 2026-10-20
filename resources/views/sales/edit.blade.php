@@ -28,14 +28,14 @@
                                 <div class="row">
                                     <div class="col-lg-4 col-sm-6 col-12">
                                         <div class="form-group">
-                                            <label for="prix">Prix</label>
+                                            <label for="prix">Prix par {{ $sale->mot_unite }}</label>
                                             <input type="text" id="prix" value="{{ $sale->prix }}" name="prix" class="form-control">
                                             <span class="error-danger"><strong id="prix-error"></strong></span>
                                         </div>
                                     </div>
                                     <div class="col-lg-4 col-sm-6 col-12">
                                         <div class="form-group">
-                                            <label for="quantity">Quantité</label>
+                                            <label for="quantity">Quantité (en {{ \App\Models\Product::motUnite($sale->unite ?: $sale->product?->unite, 2) }})</label>
                                             <input type="text" id="quantity" value="{{ $sale->quantity }}" name="quantity" class="form-control">
                                             <span class="error-danger"><strong id="quantity-error"></strong></span>
                                         </div>

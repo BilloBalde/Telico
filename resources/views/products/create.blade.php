@@ -157,7 +157,7 @@
                                         </div>
                                         <div class="col-lg-6 col-sm-6 col-12">
                                             <div class="form-group">
-                                                <label for="stock_initial">Stock initial</label>
+                                                <label for="stock_initial">Stock initial (en <span data-unite-pluriel>pièces</span>)</label>
                                                 <input type="number" id="stock_initial" name="stock_initial" class="form-control" value="{{ old('stock_initial') }}">
                                                 @error('stock_initial')
                                                 <span class="text-danger">{{ $message }}</span>
@@ -181,24 +181,25 @@
                                 <div class="form-section">
                                     <div class="form-section-title"><i class="fa fa-tag"></i> Tarification</div>
                                     <div class="row">
-                                        <div class="col-lg-6 col-sm-6 col-12">
+                                        <div class="col-lg-4 col-sm-6 col-12">
                                             <div class="form-group">
-                                                <label for="price_sale">Prix de Revient (FG)</label>
+                                                <label for="price_sale">Prix de Revient par <span data-unite-singulier>pièce</span> (FG)</label>
                                                 <input type="text" inputmode="decimal" id="price_sale" name="price_sale" class="form-control" value="{{ old('price_sale') }}" required>
                                                 @error('price_sale')
                                                 <span class="text-danger">{{ $message }}</span>
                                                 @enderror
                                             </div>
                                         </div>
-                                        <div class="col-lg-6 col-sm-6 col-12">
+                                        <div class="col-lg-4 col-sm-6 col-12">
                                             <div class="form-group">
-                                                <label for="price">Prix de Vente (FG) <small class="text-muted">— calculé automatiquement (+30%)</small></label>
+                                                <label for="price">Prix de Vente par <span data-unite-singulier>pièce</span> (FG) <small class="text-muted">— calculé automatiquement (+30%)</small></label>
                                                 <input type="text" id="price" name="price" class="form-control" value="{{ old('price') }}" readonly style="background:#f5f5f5">
                                                 @error('price')
                                                 <span class="text-danger">{{ $message }}</span>
                                                 @enderror
                                             </div>
                                         </div>
+                                        @include('products.partials.prix-minimum')
                                     </div>
                                 </div>
 

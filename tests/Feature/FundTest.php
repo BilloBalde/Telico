@@ -194,7 +194,7 @@ class FundTest extends TestCase
         $this->acheter(null, 5, 45000);
 
         // 8 sacs « fonds propres » : il n'y en a que 5, même si l'associé en a 10 à côté.
-        $this->vendre(8, null, 0)->assertSessionHas('error', fn ($m) => str_contains($m, 'Disponible : 5. Demandé : 8.'));
+        $this->vendre(8, null, 0)->assertSessionHas('error', fn ($m) => str_contains($m, 'Disponible : 5 pièces. Demandé : 8 pièces.'));
         $this->assertSame(10, $this->stock($this->fonds));
 
         // Le transfert garde le propriétaire.

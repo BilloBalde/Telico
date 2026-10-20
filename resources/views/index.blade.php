@@ -24,7 +24,7 @@
         $total_expenses = App\Models\Expense::where('store_id', $item->id)->sum('amount');
         $gains = App\Models\Sale::where('store_id', $item->id)->sum('interet');
         $total_credits_store = App\Models\Facture::where('store_id', $item->id)->sum('reste');
-        $total_quantities_store = App\Models\StoreProduct::where('store_id', $item->id)->sum('quantity');
+        $total_quantities_store = App\Models\Product::resumeStock([$item->id]);
         $solde_orange_money_store = App\Models\Payment::whereHas('facture', fn($q) => $q->where('store_id', $item->id))->where('paid_by', 'orange money')->sum('versement');
         $solde_cash_store = App\Models\Payment::whereHas('facture', fn($q) => $q->where('store_id', $item->id))->where('paid_by', 'cash')->sum('versement');
         // Balance = total ventes - total achats - total dépenses de la boutique.
@@ -324,7 +324,7 @@
             @endif
             <div class="d-flex flex-wrap gap-3" style="font-size:14px;">
                 @foreach (\App\Models\Store::TYPES as $type => $label)
-                    <span><strong>{{ $label }}s :</strong> {{ number_format((int) ($overview['stock_by_type'][$type] ?? 0), 0, ',', ' ') }} unités</span>
+                    <span><strong>{{ $label }}s :</strong> {{ $overview['stock_by_type'][$type] ?? '0' }}</span>
                 @endforeach
                 @permission('transfers.view')
                 <a href="{{ route('transfers.index', ['status' => 'pending']) }}"><strong>Transferts en cours :</strong> {{ $overview['pending_transfers'] }}</a>
@@ -404,7 +404,13 @@
                                         // Le client vient de la relation déjà chargée : un
                                         // Customer::find() ici relançait une requête par ligne.
                                         $customer = $factures->first()?->customer;
-                                        $totalQuantity = $factures->sum('quantity');
+                                        // Quantités par unité, lues sur les lignes de vente : la
+                                        // colonne factures.quantity additionne cartons et pièces.
+                                        $totalQuantity = \App\Models\Product::resumeQuantites(
+                                            App\Models\Sale::whereIn('numeroFacture', $factures->pluck('numero_facture'))
+                                                ->selectRaw("COALESCE(unite, 'pcs') as unite, SUM(quantity) as qty")
+                                                ->groupBy(DB::raw("COALESCE(unite, 'pcs')"))->get()
+                                        );
                                         $totalMontant = $factures->sum('montant_total');
                                         $totalReste = $factures->sum('reste');
                                         // montantEncaisse() se déduit de montant_total et reste,
@@ -472,7 +478,7 @@
                             <td>
                                 <div class="d-flex align-items-center">
                                     <div class="product-img me-3">
-                                        <img src="{{ asset('products/' . $item->produitImage) }}" alt="{{ $item->produit }}" class="rounded" style="width: 40px; height: 40px; object-fit: cover;">
+                                        <img src="{{ \App\Models\Product::urlImage($item->produitImage) }}" alt="{{ $item->produit }}" class="rounded" style="width: 40px; height: 40px; object-fit: cover;">
                                     </div>
                                     <div>
                                         <span class="fw-medium">{{ $item->produit }}</span>
@@ -530,7 +536,7 @@
                                         @endif
                                     </td>
                                     <td class="fw-medium">{{ $item->product->libelle ?? '—' }}</td>
-                                    <td class="text-end">{{ number_format($item->total_quantity) }} unités</td>
+                                    <td class="text-end">{{ $item->product ? $item->product->quantiteAvecUnite($item->total_quantity) : number_format($item->total_quantity) }}</td>
                                     <td class="text-end text-primary fw-medium">{{ numberDelimiter($item->total_revenue) }} FG</td>
                                 </tr>
                                 @empty
@@ -585,7 +591,7 @@
                                 @forelse ($stockAlerts as $item)
                                 <tr>
                                     <td class="fw-medium">{{ $item->libelle }}</td>
-                                    <td class="text-end">{{ $item->pcs }} pcs</td>
+                                    <td class="text-end">{{ $item->quantiteAvecUnite($item->pcs) }}</td>
                                     <td>
                                         @if($item->pcs <= 0)
                                         <span class="badge bg-danger">Rupture de stock</span>

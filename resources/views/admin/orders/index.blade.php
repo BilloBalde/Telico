@@ -95,7 +95,7 @@
                                                 @foreach($order->items as $item)
                                                     <span class="d-block">
                                                         {{ $item->product?->libelle ?? '#'.$item->product_id }}
-                                                        <em class="text-muted">× {{ $item->quantity }}</em>
+                                                        <em class="text-muted">× {{ $item->quantite_affichee }}</em>
                                                     </span>
                                                 @endforeach
                                             </td>

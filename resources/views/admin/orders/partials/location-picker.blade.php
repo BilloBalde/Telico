@@ -5,6 +5,8 @@
     window.renderOrderStockCheck = function (data) {
         var html = '';
         $.each(data.items, function (i, item) {
+            // Quantités dans l'unité du produit (« cartons »).
+            var unite = $('<div>').text(item.unite || 'pièces').html();
             // Présélection : l'emplacement déjà choisi, sinon le premier qui a
             // assez de stock, sinon rien (le vendeur doit choisir).
             var preselect = item.store_id;
@@ -16,13 +18,13 @@
             $.each(item.per_store, function (j, s) {
                 var selected = String(s.store_id) === String(preselect) ? ' selected' : '';
                 opts += '<option value="' + s.store_id + '" data-available="' + s.available + '"' + selected + '>' +
-                            $('<div>').text(s.store_name).html() + ' — ' + s.available + ' dispo' +
+                            $('<div>').text(s.store_name).html() + ' — ' + s.available + ' ' + unite + ' dispo' +
                         '</option>';
             });
-            html += '<div class="order-line py-2 px-3 mb-2" data-requested="' + item.requested + '" style="border-radius:10px;">' +
+            html += '<div class="order-line py-2 px-3 mb-2" data-requested="' + item.requested + '" data-unite="' + unite + '" style="border-radius:10px;">' +
                         '<div class="d-flex justify-content-between align-items-center">' +
                             '<span style="font-size:13px;font-weight:600;">' + $('<div>').text(item.name).html() +
-                                ' <em class="text-muted fw-normal">× ' + item.requested + ' demandé</em></span>' +
+                                ' <em class="text-muted fw-normal">× ' + item.requested + ' ' + unite + ' demandé' + (item.requested > 1 ? 's' : '') + '</em></span>' +
                             '<span class="line-badge badge"></span>' +
                         '</div>' +
                         '<label class="text-muted mb-0 mt-1" style="font-size:11px;">Emplacement du stock</label>' +
@@ -42,6 +44,7 @@
         var allOk = true;
         $('#stockCheckList .order-line').each(function () {
             var requested = parseInt($(this).data('requested'), 10) || 0;
+            var unite = $(this).data('unite') || '';
             var available = parseInt($(this).find('.item-location option:selected').data('available'), 10);
             var choisi = available >= 0;
             var ok = choisi && available >= requested;
@@ -49,7 +52,7 @@
             $(this).css({ background: ok ? '#f0fdf4' : '#fef2f2', borderLeft: '3px solid ' + (ok ? '#22c55e' : '#ef4444') });
             $(this).find('.line-badge')
                 .attr('class', 'line-badge badge ' + (ok ? 'badge-success' : 'badge-danger'))
-                .text(!choisi ? 'À choisir' : (ok ? available + ' dispo' : available + ' dispo / ' + requested + ' demandé'));
+                .text(!choisi ? 'À choisir' : (ok ? available + ' ' + unite + ' dispo' : available + ' dispo / ' + requested + ' ' + unite + ' demandés'));
         });
         $('#stockCheckList .stock-ko-alert').toggle(!allOk);
 
