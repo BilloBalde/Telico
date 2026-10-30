@@ -297,7 +297,8 @@ class DeviController extends Controller
             if (! $produit) {
                 continue;
             }
-            $cout = ! empty($ligne['fund_id']) ? $funds->unitCost((int) $ligne['fund_id'], (int) $produit->id) : null;
+            // Marchandise d'un associé : plancher au prix de revient complet (achat + frais).
+            $cout = ! empty($ligne['fund_id']) ? $funds->landedUnitCost((int) $ligne['fund_id'], (int) $produit->id) : null;
             try {
                 $produit->verifierPrixDeVente((float) ($ligne['unit_price'] ?? 0), $cout);
             } catch (\RuntimeException $e) {

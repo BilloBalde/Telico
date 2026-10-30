@@ -295,10 +295,13 @@ class FactureController extends Controller
                 // Marge au coût du propriétaire, même règle que le point de vente.
                 // (L'ancien calcul prenait le dernier « achat simple », ce qui
                 // donnait des intérêts négatifs ou égaux au prix de vente.)
-                $coutFonds = $fundId ? app(\App\Services\FundService::class)->unitCost($fundId, (int) $produit->id) : null;
+                // Associé : marge sur son prix d'achat, plancher au prix de revient
+                // complet (les frais de l'arrivage sont sa dette envers le patron).
+                $fonds = app(\App\Services\FundService::class);
+                $coutFonds = $fundId ? $fonds->unitCost($fundId, (int) $produit->id) : null;
                 // Même règle qu'à la caisse : pas de vente sous le prix minimum du
                 // produit ni sous son prix de revient (l'erreur annule toute la facture).
-                $produit->verifierPrixDeVente((float) $product['price'], $coutFonds);
+                $produit->verifierPrixDeVente((float) $product['price'], $fundId ? $fonds->landedUnitCost($fundId, (int) $produit->id) : null);
                 $product["interet"] = $fundId
                     ? ($coutFonds > 0 ? ((float) $product['price'] - $coutFonds) * (int) $product['quantity'] : 0)
                     : $produit->interetPour((float) $product['price'], (int) $product['quantity']);

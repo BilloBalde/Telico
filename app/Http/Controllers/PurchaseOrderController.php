@@ -97,19 +97,19 @@ class PurchaseOrderController extends Controller
     }
 
     /**
-     * Coût total estimé d'un achat avant enregistrement (prix × quantité,
-     * converti si achat en devise, + transport, douane et frais) : sert à
-     * vérifier que le capital non investi de l'associé le couvre.
+     * Prix des marchandises d'un achat avant enregistrement (prix × quantité,
+     * converti si achat en devise) : c'est tout ce qu'un associé paie sur son
+     * compte. Le transport, la douane et les frais divers sont avancés par le
+     * patron et deviennent une dette de l'associé.
      */
-    private function estimatedTotal(array $validated): float
+    private function estimatedMerchandise(array $validated): float
     {
         $rate = $validated['origin'] === 'chine' ? (float) ($validated['exchange_rate_used'] ?? 1) : 1.0;
-        $lines = collect($validated['lines'])->sum(fn ($l) => (float) ($l['unit_price_foreign'] ?? 0) * $rate * (int) $l['quantity']);
 
-        return $lines + (float) ($validated['transport_cost_gnf'] ?? 0) + (float) ($validated['customs_cost_gnf'] ?? 0) + (float) ($validated['other_fees_gnf'] ?? 0);
+        return collect($validated['lines'])->sum(fn ($l) => (float) ($l['unit_price_foreign'] ?? 0) * $rate * (int) $l['quantity']);
     }
 
-    /** Refuse un achat d'associé qui dépasserait ses apports non investis. */
+    /** Refuse un achat d'associé dont les marchandises dépasseraient ses apports non investis. */
     private function assertFundCovers(?int $fundId, float $total, ?int $exceptOrderId = null): void
     {
         if (! $fundId) {
@@ -120,7 +120,7 @@ class PurchaseOrderController extends Controller
         if ($total > $disponible + 0.01) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'fund_id' => sprintf(
-                    'Capital insuffisant pour %s : %s FG disponibles (apports non investis), achat estimé à %s FG.',
+                    'Capital insuffisant pour %s : %s FG disponibles (apports non investis), marchandises estimées à %s FG (le transport, la douane et les frais sont avancés par le patron).',
                     \App\Models\Fund::labelFor($fundId),
                     number_format($disponible, 0, ',', ' '),
                     number_format($total, 0, ',', ' ')
@@ -182,7 +182,7 @@ class PurchaseOrderController extends Controller
 
         // La destination doit appartenir au périmètre de l'utilisateur.
         $this->authorizeStore($validated['store_id']);
-        $this->assertFundCovers($validated['fund_id'] ?? null, $this->estimatedTotal($validated));
+        $this->assertFundCovers($validated['fund_id'] ?? null, $this->estimatedMerchandise($validated));
 
         $order = PurchaseOrder::create([
             'reference' => $validated['reference'],
@@ -272,7 +272,7 @@ class PurchaseOrderController extends Controller
         ]);
 
         $this->authorizeStore($validated['store_id']);
-        $this->assertFundCovers($validated['fund_id'] ?? null, $this->estimatedTotal($validated), $order->id);
+        $this->assertFundCovers($validated['fund_id'] ?? null, $this->estimatedMerchandise($validated), $order->id);
         $previousStoreId = (int) $order->store_id;
         $previousFundId = $order->fund_id;
 

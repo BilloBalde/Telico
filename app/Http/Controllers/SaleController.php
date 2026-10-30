@@ -234,7 +234,7 @@ class SaleController extends Controller
         $sales = $query->orderBy('created_at', 'desc')->get();
 
         $filename = 'ventes_' . now()->format('Y-m-d_His') . '.xlsx';
-        
+
         return Excel::download(new SalesExport($request, $sales), $filename);
     }
 
@@ -310,7 +310,7 @@ class SaleController extends Controller
         ]);
 
         $filename = 'ventes_' . now()->format('Y-m-d_His') . '.pdf';
-        
+
         return $pdf->download($filename);
     }
 
@@ -501,16 +501,20 @@ class SaleController extends Controller
                     // de consommer du stock pour une ligne qui va être refusée.
                     // Coût de revient du propriétaire de la marchandise : celui des
                     // fonds propres, ou celui des achats financés par l'associé.
+                    // Associé : la marge se calcule sur son prix d'achat (les frais de
+                    // l'arrivage sont sa dette envers le patron), mais le plancher reste
+                    // le prix de revient complet, pour ne jamais vendre à perte.
                     $fundId = ! empty($data['fund_id']) ? (int) $data['fund_id'] : null;
                     $prix_achat = $fundId
                         ? $funds->unitCost($fundId, (int) $data['product_id'])
                         : ($product ? $this->resolveUnitCost($product) : 0.0);
+                    $plancher = $fundId ? $funds->landedUnitCost($fundId, (int) $data['product_id']) : $prix_achat;
                     // Plancher : le plus haut du prix de vente minimum (fiche produit)
                     // et du coût de revient du propriétaire de la marchandise.
                     if ($product) {
-                        $product->verifierPrixDeVente((float) $data['prix'], $prix_achat);
+                        $product->verifierPrixDeVente((float) $data['prix'], $plancher);
                     } else {
-                        $this->assertPriceCoversCost($libelle, (float) $data['prix'], $prix_achat);
+                        $this->assertPriceCoversCost($libelle, (float) $data['prix'], $plancher);
                     }
                     $data['fund_id'] = $fundId;
                     $data['unit_cost'] = $prix_achat > 0 ? $prix_achat : null;
@@ -775,13 +779,26 @@ class SaleController extends Controller
             $sale->prixTotal = $request->quantity * $request->prix;
 
             $product = Product::find($sale->product_id);
-            // Ligne d'un associé : son coût de revient, retenu à la vente.
-            $prixAchat = $sale->fund_id
-                ? (float) ($sale->unit_cost ?? app(\App\Services\FundService::class)->unitCost((int) $sale->fund_id, (int) $sale->product_id))
-                : ($product ? $this->resolveUnitCost($product) : 0);
+            $funds = app(\App\Services\FundService::class);
+            // Coût retenu pour la marge : prix payé au partenaire (vente tierce),
+            // prix d'achat de l'associé retenu à la vente (sa ligne), sinon le
+            // prix de revient des fonds propres.
+            $prixAchat = match (true) {
+                (bool) $sale->is_third_party => (float) $sale->purchase_price_from_partner,
+                (bool) $sale->fund_id        => (float) ($sale->unit_cost ?? $funds->unitCost((int) $sale->fund_id, (int) $sale->product_id)),
+                default                      => $product ? $this->resolveUnitCost($product) : 0.0,
+            };
             // Même règle qu'à la création : modifier une vente ne doit pas permettre
-            // de repasser sous le prix de revient.
-            $this->assertPriceCoversCost($product?->libelle ?? 'Produit inconnu', (float) $request->prix, (float) $prixAchat);
+            // de repasser sous le plancher (prix minimum de la fiche, prix de revient
+            // complet pour l'associé, prix payé au partenaire pour une vente tierce).
+            $plancher = $sale->fund_id && ! $sale->is_third_party
+                ? $funds->landedUnitCost((int) $sale->fund_id, (int) $sale->product_id)
+                : $prixAchat;
+            if ($product && ! $sale->is_third_party) {
+                $product->verifierPrixDeVente((float) $request->prix, $plancher);
+            } else {
+                $this->assertPriceCoversCost($product?->libelle ?? 'Produit inconnu', (float) $request->prix, (float) $plancher);
+            }
 
             $sale->interet = $prixAchat > 0 ? ($request->prix - $prixAchat) * $request->quantity : 0;
             $sale->save();

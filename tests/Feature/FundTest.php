@@ -73,21 +73,21 @@ class FundTest extends TestCase
         ]);
     }
 
-    private function acheter(?Fund $fonds, int $qte, float $prix)
+    private function acheter(?Fund $fonds, int $qte, float $prix, array $frais = [])
     {
-        return $this->actingAs($this->admin)->post(route('purchase-orders.store'), [
+        return $this->actingAs($this->admin)->post(route('purchase-orders.store'), $frais + [
             'reference' => 'PO-' . uniqid(), 'store_id' => $this->entrepot->id, 'fund_id' => $fonds?->id,
             'origin' => 'guinee', 'date_emis' => now()->toDateString(), 'date_recu' => now()->toDateString(),
             'lines' => [['product_id' => $this->ciment->id, 'quantity' => $qte, 'unit_price_foreign' => $prix]],
         ]);
     }
 
-    private function vendre(int $qte, ?Fund $fonds, float $avance)
+    private function vendre(int $qte, ?Fund $fonds, float $avance, float $prix = 60000)
     {
         return $this->actingAs($this->admin)->post(route('sales.store'), [
             'numeroFacture' => 'F-' . uniqid(), 'store_id' => $this->principal->id, 'customer_id' => $this->client->id,
             'avance' => $avance, 'paid_by' => 'cash',
-            'sales' => [1 => array_filter(['product_id' => $this->ciment->id, 'quantity' => $qte, 'prix' => 60000,
+            'sales' => [1 => array_filter(['product_id' => $this->ciment->id, 'quantity' => $qte, 'prix' => $prix,
                 'store_id' => $this->entrepot->id, 'fund_id' => $fonds?->id, 'is_third_party' => '0'], fn ($v) => $v !== null)],
         ]);
     }
@@ -167,6 +167,104 @@ class FundTest extends TestCase
             'kind' => 'prelevement', 'amount' => 250_000, 'date' => now()->toDateString(),
         ])->assertSessionHas('success');
         $this->assertEquals(0, $this->releve()['part_patron_restante']);
+    }
+
+    public function test_frais_d_achat_payes_par_le_patron_dette_de_l_associe(): void
+    {
+        // 10 000 000 apportés : 200 sacs à 50 000 = 10 000 000 de marchandises,
+        // plus 1 000 000 de transport, douane et frais payés par le patron.
+        $this->apport(10_000_000);
+        $frais = ['transport_cost_gnf' => 600_000, 'customs_cost_gnf' => 300_000, 'other_fees_gnf' => 100_000];
+        $this->acheter($this->fonds, 200, 50000, $frais)->assertSessionHasNoErrors();
+
+        // Seules les marchandises sont prélevées sur le compte ; les frais sont sa dette.
+        $r = $this->releve();
+        $this->assertEquals(10_000_000, $r['achats']);
+        $this->assertEquals(1_000_000, $r['frais_avances']);
+        $this->assertEquals(1_000_000, $r['dettes']);
+        $this->assertEquals(0, $r['capital_disponible']);
+        $this->assertEquals(0, $r['tresorerie']);
+        $this->assertEquals(9_000_000, $r['net_a_verser']); // 10 M de capital − 1 M de dette
+
+        // Un nouvel achat de marchandises est refusé : plus de capital non investi.
+        $this->acheter($this->fonds, 1, 50000)->assertSessionHasErrors('fund_id');
+
+        // Coût de l'associé : 50 000 (prix d'achat). Plancher de vente : 55 000
+        // (prix de revient complet) — pas de vente à perte.
+        $this->vendre(10, $this->fonds, 0, 54000)->assertSessionHas('error', fn ($m) => str_contains($m, 'Vente à perte') && str_contains($m, '55 000'));
+        $this->assertSame(200, $this->stock($this->fonds));
+
+        // 200 sacs vendus 60 000, payés comptant : marge 10 000 par sac sur son prix d'achat.
+        $this->vendre(200, $this->fonds, 12_000_000)->assertRedirect(route('factures.index'));
+        $vente = Sale::where('fund_id', $this->fonds->id)->firstOrFail();
+        $this->assertEquals(50000, (float) $vente->unit_cost);
+        $this->assertEquals(2_000_000, (float) $vente->interet);
+
+        // Modifier la vente ne permet pas non plus de passer sous le prix de revient.
+        $this->actingAs($this->admin)->put(route('sales.update', $vente->id), ['quantity' => 200, 'prix' => 54000])
+            ->assertSessionHas('error', fn ($m) => str_contains($m, 'Vente à perte'));
+        $this->assertEquals(60000, (float) $vente->fresh()->prix);
+
+        $r = $this->releve();
+        $this->assertEquals(2_000_000, $r['benefice_encaisse']);
+        $this->assertEquals(1_600_000, $r['part_associe']);
+        $this->assertEquals(400_000, $r['part_patron']);
+        $this->assertEquals(12_000_000, $r['tresorerie']);
+        // À la fin : capital 10 M + bénéfice 1,6 M − dette 1 M.
+        $this->assertEquals(11_600_000, $r['du_a_l_associe']);
+        $this->assertEquals(10_600_000, $r['net_a_verser']);
+
+        // Le formulaire de versement propose la retenue tant qu'une dette reste.
+        $this->actingAs($this->admin)->get(route('associates.show', $this->fonds))->assertOk()
+            ->assertSee('name="retenue"', false)->assertSee('10 600 000 FG');
+
+        // Tout lui verser sans retenir les frais : refusé, le patron ne serait pas remboursé.
+        $verser = fn (array $montants) => $this->actingAs($this->admin)->post(route('associates.transactions.store', $this->fonds),
+            $montants + ['kind' => 'versement', 'date' => now()->toDateString()]);
+        $verser(['capital' => 10_000_000, 'benefice' => 1_600_000])
+            ->assertSessionHasErrors(['retenue' => 'Retenez au moins 1 000 000 FG de frais avancés : l\'associé doit encore 1 000 000 FG au patron et il ne lui resterait que 0 FG à recevoir.']);
+        $verser(['capital' => 10_000_000, 'benefice' => 1_600_000, 'retenue' => 1_200_000])->assertSessionHasErrors('retenue');
+
+        // Versement final : 11,6 M sortent du compte, dont 1 M gardé par le patron.
+        $verser(['capital' => 10_000_000, 'benefice' => 1_600_000, 'retenue' => 1_000_000])->assertSessionHas('success');
+        $this->assertEquals(1_000_000, (float) FundTransaction::where('type', FundTransaction::RETENUE_FRAIS)->value('amount'));
+
+        $r = $this->releve();
+        $this->assertEquals(0, $r['dettes']);
+        $this->assertEquals(0, $r['net_a_verser']);
+        $this->assertEquals(400_000, $r['tresorerie']); // la part du patron
+
+        $this->actingAs($this->admin)->post(route('associates.transactions.store', $this->fonds), [
+            'kind' => 'prelevement', 'amount' => 400_000, 'date' => now()->toDateString(),
+        ])->assertSessionHas('success');
+        $this->assertEquals(0, $this->releve()['tresorerie']);
+
+        // Écrans : relevé, liste des associés, fiche de l'achat.
+        $this->actingAs($this->admin)->get(route('associates.show', $this->fonds))->assertOk()
+            ->assertSee('Frais avancés retenus par le patron')->assertSee('dont 1 000 000')->assertSee('Net à remettre');
+        $this->actingAs($this->admin)->get(route('associates.index'))->assertOk()->assertSee('Dettes (frais avancés)');
+        $achat = \App\Models\PurchaseOrder::where('fund_id', $this->fonds->id)->firstOrFail();
+        $this->actingAs($this->admin)->get(route('purchase-orders.show', $achat->id))->assertOk()
+            ->assertSee('Marchandises : 10 000 000 GNF')->assertSee('dette de l\'associé) : 1 000 000 GNF', false);
+    }
+
+    public function test_modifier_un_achat_de_l_associe_ne_compte_que_les_marchandises(): void
+    {
+        $this->apport(1_000_000);
+        $frais = ['transport_cost_gnf' => 200_000];
+        $this->acheter($this->fonds, 20, 50000, $frais)->assertSessionHasNoErrors();
+        $achat = \App\Models\PurchaseOrder::firstOrFail();
+
+        // Modification : ses propres marchandises (1 000 000) sont remises dans le
+        // disponible ; les frais ne comptent pas.
+        $modifier = fn (int $qte) => $this->actingAs($this->admin)->put(route('purchase-orders.update', $achat->id), $frais + [
+            'reference' => $achat->reference, 'store_id' => $this->entrepot->id, 'fund_id' => $this->fonds->id,
+            'origin' => 'guinee', 'date_emis' => now()->toDateString(), 'date_recu' => now()->toDateString(),
+            'lines' => [['product_id' => $this->ciment->id, 'quantity' => $qte, 'unit_price_foreign' => 50000]],
+        ]);
+        $modifier(21)->assertSessionHasErrors('fund_id');
+        $modifier(20)->assertSessionHasNoErrors();
+        $this->assertEquals(200_000, $this->releve()['dettes']);
     }
 
     public function test_perte_sur_le_stock_de_l_associe_partagee(): void

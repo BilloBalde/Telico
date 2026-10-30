@@ -115,6 +115,7 @@ class IndexController extends Controller
                 'stock_valeur'         => (float) $releves->sum('stock_valeur'),
                 'benefice_a_verser'    => (float) $releves->sum('benefice_a_verser'),
                 'part_patron_restante' => (float) $releves->sum('part_patron_restante'),
+                'dettes'               => (float) $releves->sum('dettes'),
                 'tresorerie'           => (float) $releves->sum('tresorerie'),
             ];
         }

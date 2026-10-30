@@ -354,6 +354,16 @@
                             </div>
                         </div>
                         @endif
+                        @if($order->fund_id)
+                        <div class="po-stat-card">
+                            <div class="po-stat-icon tone-fees"><i class="fas fa-handshake"></i></div>
+                            <div>
+                                <span class="po-stat-label">Financé par {{ \App\Models\Fund::labelFor($order->fund_id) }}</span>
+                                <span class="po-stat-value">Marchandises : {{ number_format($order->montant_marchandises_gnf, 0, ',', ' ') }} GNF</span>
+                                <small class="d-block text-muted">Frais avancés par le patron (dette de l'associé) : {{ number_format($order->frais_gnf, 0, ',', ' ') }} GNF</small>
+                            </div>
+                        </div>
+                        @endif
                         @if($order->notes)
                         <div class="po-stat-card">
                             <div class="po-stat-icon tone-notes"><i class="fas fa-sticky-note"></i></div>

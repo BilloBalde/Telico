@@ -106,7 +106,9 @@ class FundController extends Controller
      * Mouvement du compte à part :
      *  - apport : l'associé apporte du capital ;
      *  - versement : à l'associé, ventilé au choix entre remboursement de
-     *    capital et versement de bénéfice ;
+     *    capital et versement de bénéfice ; le patron peut en retenir une part
+     *    pour se rembourser les frais d'achat qu'il a avancés (dette de
+     *    l'associé) : l'associé reçoit alors le versement moins cette retenue ;
      *  - prélèvement : le patron prend sa part du bénéfice.
      */
     public function storeTransaction(Request $request, Fund $fund)
@@ -119,6 +121,7 @@ class FundController extends Controller
             'amount'    => 'nullable|numeric|min:0',
             'capital'   => 'nullable|numeric|min:0',
             'benefice'  => 'nullable|numeric|min:0',
+            'retenue'   => 'nullable|numeric|min:0',
         ]);
 
         $s = $this->funds->statement($fund);
@@ -146,11 +149,34 @@ class FundController extends Controller
             if ($capital + $benefice > $s['tresorerie'] + 0.01) {
                 throw ValidationException::withMessages(['capital' => 'Le compte de l\'associé ne contient que ' . $fmt($s['tresorerie']) . '.']);
             }
+
+            // Frais avancés par le patron (transport, douane, frais divers des
+            // achats de l'associé) : retenus sur ce versement.
+            $retenue = (float) ($data['retenue'] ?? 0);
+            if ($retenue > max(0, $s['dettes']) + 0.01) {
+                throw ValidationException::withMessages(['retenue' => 'Dette de l\'associé (frais avancés) : ' . $fmt(max(0, $s['dettes'])) . '.']);
+            }
+            if ($retenue > $capital + $benefice + 0.01) {
+                throw ValidationException::withMessages(['retenue' => 'La retenue ne peut dépasser le versement (' . $fmt($capital + $benefice) . ').']);
+            }
+            // L'associé ne doit pas être payé avant d'avoir réglé sa dette : ce
+            // qui lui restera dû après ce versement doit encore la couvrir.
+            $resteDu = max(0, ($s['capital_restant'] - $capital) + ($s['benefice_a_verser'] - $benefice));
+            $retenueMinimum = min($capital + $benefice, max(0, $s['dettes'] - $resteDu));
+            if ($retenue < $retenueMinimum - 0.01) {
+                throw ValidationException::withMessages(['retenue' => 'Retenez au moins ' . $fmt($retenueMinimum)
+                    . ' de frais avancés : l\'associé doit encore ' . $fmt($s['dettes']) . ' au patron et il ne lui resterait que '
+                    . $fmt($resteDu) . ' à recevoir.']);
+            }
+
             if ($capital > 0) {
                 $rows[] = [FundTransaction::REMBOURSEMENT_CAPITAL, $capital];
             }
             if ($benefice > 0) {
                 $rows[] = [FundTransaction::VERSEMENT_BENEFICE, $benefice];
+            }
+            if ($retenue > 0) {
+                $rows[] = [FundTransaction::RETENUE_FRAIS, $retenue];
             }
         } else {
             $montant = (float) ($data['amount'] ?? 0);

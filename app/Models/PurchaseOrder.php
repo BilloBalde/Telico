@@ -36,4 +36,25 @@ class PurchaseOrder extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    /** Fonds de l'associé qui finance l'achat (null = fonds propres). */
+    public function fund()
+    {
+        return $this->belongsTo(Fund::class);
+    }
+
+    /** Transport + douane + frais divers de l'arrivage. */
+    public function getFraisGnfAttribute(): float
+    {
+        return (float) $this->transport_cost_gnf + (float) $this->customs_cost_gnf + (float) $this->other_fees_gnf;
+    }
+
+    /**
+     * Prix des marchandises seules (coût de revient total moins les frais) :
+     * c'est ce qui est prélevé sur le compte d'un associé qui finance l'achat.
+     */
+    public function getMontantMarchandisesGnfAttribute(): float
+    {
+        return round((float) $this->total_landed_cost_gnf - $this->frais_gnf, 2);
+    }
 }

@@ -24,7 +24,7 @@ class Devi extends Model
             if (auth()->check()) {
                 $devis->created_by = auth()->id();
             }
-            
+
             // Generate numero_devis automatically
             $devis->numero_devis = $devis->generateNumber();
         });
@@ -105,7 +105,8 @@ class Devi extends Model
             if (! $line->product) {
                 continue;
             }
-            $cout = $line->fund_id ? $funds->unitCost((int) $line->fund_id, (int) $line->product_id) : null;
+            // Marchandise d'un associé : plancher au prix de revient complet (achat + frais).
+            $cout = $line->fund_id ? $funds->landedUnitCost((int) $line->fund_id, (int) $line->product_id) : null;
             $line->product->verifierPrixDeVente((float) $line->unit_price, $cout);
         }
     }

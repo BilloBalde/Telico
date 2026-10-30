@@ -22,6 +22,8 @@
                             <th class="text-end">Stock (valeur au coût)</th>
                             <th class="text-end">Bénéfice encaissé</th>
                             <th class="text-end">Part associé à verser</th>
+                            <th class="text-end">Dettes (frais avancés)</th>
+                            <th class="text-end">Net à remettre</th>
                             <th class="text-end">Part patron restante</th>
                             <th class="text-end">Compte associé</th>
                             <th></th>
@@ -40,17 +42,19 @@
                             <td class="text-end">{{ numberDelimiter($s['stock_valeur']) }}</td>
                             <td class="text-end {{ $s['resultat'] < 0 ? 'text-danger' : 'text-success' }}">{{ numberDelimiter($s['resultat']) }}</td>
                             <td class="text-end">{{ numberDelimiter($s['benefice_a_verser']) }}</td>
+                            <td class="text-end">{{ numberDelimiter($s['dettes']) }}</td>
+                            <td class="text-end fw-semibold">{{ numberDelimiter($s['net_a_verser']) }}</td>
                             <td class="text-end">{{ numberDelimiter($s['part_patron_restante']) }}</td>
                             <td class="text-end fw-semibold">{{ numberDelimiter($s['tresorerie']) }}</td>
                             <td class="text-end"><a href="{{ route('associates.show', $row->fund) }}" class="btn btn-sm btn-primary">Relevé</a></td>
                         </tr>
                         @empty
-                        <tr><td colspan="8" class="text-center text-muted py-4">Aucun associé. Créez-en un pour suivre son argent séparément.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4">Aucun associé. Créez-en un pour suivre son argent séparément.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
-            <p class="text-muted mb-0" style="font-size:12px;">Montants en FG. Le bénéfice est compté à l'encaissement : une vente à crédit n'entre dans le résultat qu'au fur et à mesure des paiements du client.</p>
+            <p class="text-muted mb-0" style="font-size:12px;">Montants en FG. Le bénéfice est compté à l'encaissement : une vente à crédit n'entre dans le résultat qu'au fur et à mesure des paiements du client. Seul le prix des marchandises est prélevé sur le compte d'un associé ; les frais de ses achats (transport, douane, frais) sont avancés par le patron et forment sa dette. Net à remettre = capital restant + bénéfice à verser − dettes.</p>
         </div>
     </div>
 </div>

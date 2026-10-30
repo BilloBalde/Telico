@@ -318,6 +318,7 @@
                 <span>Stock des associés : <strong>{{ numberDelimiter($a['stock_valeur']) }} FG</strong></span>
                 <span>Bénéfice à leur verser : <strong>{{ numberDelimiter($a['benefice_a_verser']) }} FG</strong></span>
                 <span>Votre part restante : <strong>{{ numberDelimiter($a['part_patron_restante']) }} FG</strong></span>
+                <span>Frais avancés à récupérer : <strong>{{ numberDelimiter($a['dettes']) }} FG</strong></span>
                 <span>Comptes associés : <strong>{{ numberDelimiter($a['tresorerie']) }} FG</strong></span>
                 <a href="{{ route('associates.index') }}" class="ms-auto">Voir les relevés <i class="fas fa-arrow-right"></i></a>
             </div>

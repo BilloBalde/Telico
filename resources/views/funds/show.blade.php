@@ -31,7 +31,7 @@
                     <tr><td>Apports</td><td class="text-end">{{ $fmt($s['apports']) }}</td></tr>
                     <tr><td>Capital remboursé</td><td class="text-end">− {{ $fmt($s['capital_rembourse']) }}</td></tr>
                     <tr class="fw-bold"><td>Capital restant dû</td><td class="text-end">{{ $fmt($s['capital_restant']) }}</td></tr>
-                    <tr><td class="text-muted">Disponible pour de nouveaux achats</td><td class="text-end text-muted">{{ $fmt($s['capital_disponible']) }}</td></tr>
+                    <tr><td class="text-muted">Disponible pour acheter des marchandises</td><td class="text-end text-muted">{{ $fmt($s['capital_disponible']) }}</td></tr>
                 </table>
             </div></div>
         </div>
@@ -39,7 +39,8 @@
             <div class="card flex-fill"><div class="card-body">
                 <h6 class="mb-3">Marchandises et ventes</h6>
                 <table class="table table-sm mb-0">
-                    <tr><td>Achats financés</td><td class="text-end">{{ $fmt($s['achats']) }}</td></tr>
+                    <tr><td>Marchandises achetées <small class="d-block text-muted">prélevées sur son compte</small></td><td class="text-end">{{ $fmt($s['achats']) }}</td></tr>
+                    <tr><td>Frais des achats <small class="d-block text-muted">transport, douane, frais : payés par le patron</small></td><td class="text-end">{{ $fmt($s['frais_avances']) }}</td></tr>
                     <tr><td>Stock restant</td><td class="text-end">{{ \App\Models\Product::resumeQuantites($stock, 'quantity') }} · {{ $fmt($s['stock_valeur']) }}</td></tr>
                     <tr><td>Ventes facturées</td><td class="text-end">{{ $fmt($s['ventes_facturees']) }}</td></tr>
                     <tr><td>dont encaissées</td><td class="text-end">{{ $fmt($s['ventes_encaissees']) }}</td></tr>
@@ -67,9 +68,11 @@
             ['Compte de l\'associé', $s['tresorerie'], 'Doit se trouver sur son compte à part'],
             ['Capital à rembourser', $s['capital_restant'], 'Remboursé : '.$fmt($s['capital_rembourse'])],
             ['Bénéfice à verser à l\'associé', $s['benefice_a_verser'], 'Déjà versé : '.$fmt($s['benefice_verse'])],
+            ['Dettes de l\'associé (frais avancés)', $s['dettes'], 'Frais : '.$fmt($s['frais_avances']).' · déjà retenus : '.$fmt($s['frais_retenus'])],
+            ['Net à remettre à l\'associé', $s['net_a_verser'], 'Capital + bénéfice − dettes'],
             ['Part du patron restante', $s['part_patron_restante'], 'Déjà prélevée : '.$fmt($s['part_patron_prelevee'])],
         ] as [$titre, $valeur, $detail])
-        <div class="col-lg-3 col-sm-6 d-flex">
+        <div class="col-xl-2 col-lg-4 col-sm-6 d-flex">
             <div class="card flex-fill"><div class="card-body">
                 <div class="text-muted" style="font-size:12px;">{{ $titre }}</div>
                 <div class="h5 mb-0 {{ $valeur < 0 ? 'text-danger' : '' }}">{{ $fmt($valeur) }} FG</div>
@@ -104,6 +107,11 @@
                         <input type="number" step="0.01" min="0" name="capital" class="form-control" placeholder="0">
                         <label class="mt-2 mb-0" style="font-size:12px;">Part bénéfice (max {{ $fmt(max(0, $s['benefice_a_verser'])) }})</label>
                         <input type="number" step="0.01" min="0" name="benefice" class="form-control" placeholder="0">
+                        @if ($s['dettes'] > 0)
+                        <label class="mt-2 mb-0" style="font-size:12px;">dont frais avancés retenus par le patron (dette : {{ $fmt($s['dettes']) }})</label>
+                        <input type="number" step="0.01" min="0" name="retenue" class="form-control" placeholder="0">
+                        <small class="d-block text-muted">L'associé reçoit le versement moins cette retenue.</small>
+                        @endif
                         <input type="date" name="date" value="{{ now()->toDateString() }}" class="form-control mt-2" required>
                         <input type="text" name="notes" class="form-control mt-2" placeholder="Note (facultatif)">
                         <button class="btn btn-submit btn-sm mt-2">Enregistrer le versement</button>
@@ -137,7 +145,12 @@
                             <tr>
                                 <td>{{ $t->date->format('d/m/Y') }}</td>
                                 <td>{{ $t->type_label }}@if ($t->notes)<small class="d-block text-muted">{{ $t->notes }}</small>@endif</td>
+                                @if ($t->type === \App\Models\FundTransaction::RETENUE_FRAIS)
+                                {{-- Comprise dans le versement du même jour : pas une sortie de plus. --}}
+                                <td class="text-end text-muted">dont {{ $fmt($t->amount) }}</td>
+                                @else
                                 <td class="text-end {{ $t->type === 'apport' ? 'text-success' : '' }}">{{ $t->type === 'apport' ? '+' : '−' }} {{ $fmt($t->amount) }}</td>
+                                @endif
                                 <td>{{ $t->user?->name ?? '—' }}</td>
                             </tr>
                             @empty
@@ -153,17 +166,18 @@
                 <h6 class="mb-3">Achats financés</h6>
                 <div class="table-responsive">
                     <table class="table table-sm">
-                        <thead><tr><th>Date</th><th>Référence</th><th>Destination</th><th class="text-end">Montant</th></tr></thead>
+                        <thead><tr><th>Date</th><th>Référence</th><th>Destination</th><th class="text-end">Marchandises</th><th class="text-end">Frais (dette)</th></tr></thead>
                         <tbody>
                             @forelse ($purchases as $p)
                             <tr class="{{ $p->status === 'cancelled' ? 'text-muted text-decoration-line-through' : '' }}">
                                 <td>{{ optional($p->date_emis)->format('d/m/Y') }}</td>
                                 <td>@if ($canManage)<a href="{{ route('purchase-orders.show', $p->id) }}">{{ $p->reference }}</a>@else{{ $p->reference }}@endif</td>
                                 <td>{{ $p->store?->store_name }}</td>
-                                <td class="text-end">{{ $fmt($p->total_landed_cost_gnf) }}</td>
+                                <td class="text-end">{{ $fmt($p->montant_marchandises_gnf) }}</td>
+                                <td class="text-end">{{ $fmt($p->frais_gnf) }}</td>
                             </tr>
                             @empty
-                            <tr><td colspan="4" class="text-center text-muted">Aucun achat financé.</td></tr>
+                            <tr><td colspan="5" class="text-center text-muted">Aucun achat financé.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -178,7 +192,7 @@
                 <h6 class="mb-3">Marchandises de l'associé en stock</h6>
                 <div class="table-responsive">
                     <table class="table table-sm">
-                        <thead><tr><th>Produit</th><th>Emplacement</th><th class="text-end">Qté</th><th class="text-end">Valeur</th></tr></thead>
+                        <thead><tr><th>Produit</th><th>Emplacement</th><th class="text-end">Qté</th><th class="text-end">Valeur (prix d'achat)</th></tr></thead>
                         <tbody>
                             @forelse ($stock as $r)
                             <tr>
@@ -222,8 +236,10 @@
         </div>
     </div>
     <p class="text-muted" style="font-size:12px;">
-        Montants en FG. Coût = coût de revient des achats financés par l'associé (achat, transport, douane). Le bénéfice d'une vente n'est compté
-        qu'au fur et à mesure de son encaissement ; un paiement partiel du client est réparti au prorata sur les lignes de la facture.
+        Montants en FG. Coût = prix d'achat des marchandises financées par l'associé. Le transport, la douane et les frais de ses achats sont payés
+        par le patron et inscrits comme dette de l'associé : à la fin, l'associé reçoit son capital plus sa part du bénéfice, moins cette dette.
+        Le bénéfice d'une vente n'est compté qu'au fur et à mesure de son encaissement ; un paiement partiel du client est réparti au prorata sur
+        les lignes de la facture.
     </p>
 </div>
 @endsection
